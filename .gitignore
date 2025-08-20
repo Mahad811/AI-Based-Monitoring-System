@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+!notebooks/*.ipynb
+
+# Models and data
+*.pt
+*.pth
+*.h5
+*.pb
+*.onnx
+*.weights
+datasets/
+data/
+models/
+*.mp4
+*.avi
+*.mov
+*.wav
+*.mp3
+*.flac
+*.env
+.env
+.cursor/
+
+# Downloaded datasets and temp files
+kinetics_check/
+fall_detection/
+seizure_detection/
+model_test_results/
+test_results/
+demo_results/
+runs/
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Large image files
+*.png
+*.jpg
+*.jpeg
+!docs/*.png
+!docs/*.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
