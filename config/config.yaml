@@ -1,0 +1,113 @@
+# Vital Guardian Configuration
+
+# Vision Module Settings (Rebuilt for temporal classification)
+vision:
+  # Shared person detector (used by both fall and seizure classifiers)
+  person_detector:
+    model: yolov8n.pt              # Pretrained COCO model
+    confidence: 0.10                # Lowered from 0.5 — catches partially visible patients
+  
+  # Fall classifier V2 (temporal RGB triplets with ensemble support)
+  # Model path can be:
+  #   - Directory with fold*.pt files for 5-model ensemble (recommended)
+  #   - Single best.pt file for single model
+  fall_classifier:
+    model: fall_detection/fall_v2_ensemble/    # 5-model ensemble (fold0.pt–fold4.pt)
+    threshold: 0.64                    # Best F1 threshold — 85% Recall, 82.9% F1 at video level
+    window_size: 10                    # Frames to average for smoothing
+  
+  # Temporal encoder (3-frame RGB stacking for fall detection V2)
+  temporal_encoder:
+    frame_size: 224                 # Output image size
+    buffer_size: 3                   # Number of frames in temporal encoding (V2: RGB stacking, R=frame[t-1], G=frame[t], B=frame[t+1])
+  
+  # Bed-exit detection (preventative)
+  bed_exit:
+    enabled: true
+    boundary_margin_px: 50           # Margin from bed boundary (higher = earlier warning)
+    min_frames: 15                   # Frames to confirm exit (0.5s)
+    cooldown: 10.0                   # Seconds to remain in HIGH_SENSITIVITY mode after exit
+
+  # Safety Net (post-fall detection)
+  safety_net:
+    enabled: true
+    floor_margin_px: 50              # Pixels from bottom to define "Floor Zone"
+    torso_angle_threshold: 45        # Degrees (0=horizontal, 90=vertical)
+    min_duration: 2.0                # Seconds to confirm "Fallen" state
+  
+  # Environmental & Behavioral Checks
+  robustness:
+    darkness_threshold: 30.0         # Average pixel intensity (0-255) below which vision is disabled
+    inactivity_timeout_sec: 600      # 10 minutes (Alert if patient missing for this long)
+
+  # Seizure classifier V3 (dual ensemble: motion + temporal)
+  # Expects seizure_detection/seizure_v3_ensemble/fold*.pt and seizure_detection/seizure_temporal_ensemble/fold*.pt
+  seizure_classifier:
+    model: seizure_detection/             # Base dir containing seizure_v3_ensemble/ and seizure_temporal_ensemble/
+    window_seconds: 2.0                   # Motion summary window duration
+    stride_seconds: 0.5                  # How often to classify (every 0.5 sec)
+    threshold: 0.24                      # Video-level max-aggregation threshold (optimal from training eval)
+    window_size: 8                       # Frames to average for smoothing
+    
+# Audio Module Settings
+audio:
+  sample_rate: 16000
+  chunk_duration: 2.0  # seconds
+  
+  # Distress sound classification
+  distress_threshold: 0.7
+  
+  # Keyword spotting
+  kws:
+    languages: ['english', 'urdu']
+    keywords_english: ['help', 'pain', 'nurse', 'doctor']
+    keywords_urdu: ['madad', 'dard', 'nurse']  # help, pain, nurse
+    confidence_threshold: 0.75
+    
+  # Privacy
+  privacy_shield_enabled: true
+  
+# ============================================================
+# Cognitive Core — "Reflex-then-Reason" AI Pipeline
+# ============================================================
+cognitive:
+
+  # ── Layer 1: Reflex Engine (deterministic, <50ms, no API) ──
+  reflex:
+    corroboration_window_sec: 2.0   # Wait for audio after vision-only event
+    cooldown_sec: 30                # Seconds between repeated alerts of same type
+
+  # ── Layer 2: Reasoning Engine (Gemini 3 Flash — the AI brain) ──
+  reasoning:
+    # Model to use. Swap to gemini-3-pro-preview for deeper reasoning.
+    model: "gemini-3-flash-preview"
+
+    # thinking_level: minimal | low | medium | high
+    # 'low' = fast response (~1s). 'high' = deep reasoning (~3-4s).
+    thinking_level: "low"
+
+    # media_resolution: low | medium | high
+    # Controls image detail sent to Gemini. 'medium' is the right balance.
+    media_resolution: "medium"
+
+    max_output_tokens: 2000
+    temperature: 0.2               # Low = factual, consistent
+
+    # Set true to use pre-written mock responses (no internet needed for demos)
+    mock_mode: false
+
+  # ── Event Log (ring buffer sent to Gemini for context) ──
+  event_log:
+    max_events: 100                # Max events stored in the ring buffer
+    context_window_sec: 60         # Seconds of history sent to Gemini
+  
+# Alert System
+alerts:
+  priority_levels: ['low', 'medium', 'high', 'critical']
+  cooldown_seconds: 30  # Prevent alert spam
+  
+# Performance
+performance:
+  max_latency_ms: 2000
+  target_fps: 10
+
