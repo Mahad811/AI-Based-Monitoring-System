@@ -1,0 +1,39 @@
+# Vital Guardian - Required Dependencies
+# Installation: pip install -r requirements.txt
+
+# Core ML/DL
+torch>=2.0.0
+torchvision>=0.15.0
+tensorflow>=2.14.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+pillow>=10.0.0
+
+# Computer Vision
+ultralytics>=8.0.0          # YOLOv8
+mediapipe>=0.10.0           # Pose estimation
+timm>=0.9.0                 # EfficientNet (fall + seizure classifiers)
+
+# Audio Processing
+librosa>=0.10.0             # Audio processing
+soundfile>=0.12.0           # Audio I/O
+tensorflow-hub>=0.12.0      # YAMNet model
+faster-whisper>=1.0.0       # Offline Speech-to-Text
+silero-vad                  # Voice Activity Detection
+pyaudio                     # Microphone capture
+
+# AI / LLM — Gemini 3 (official SDK, replaces transformers)
+google-genai>=1.51.0         # Google Gemini API (requires 1.51+ for Gemini 3)
+pydantic>=2.0.0              # Structured output validation for IncidentReport
+python-dotenv>=1.0.0         # Load GEMINI_API_KEY from .env file
+
+# Web Framework
+flask>=2.3.0                # Dashboard backend
+
+# Utilities
+pyyaml>=6.0                 # Configuration management
+tqdm>=4.65.0                # Progress bars
+pandas>=2.0.0               # Data manipulation
+matplotlib>=3.7.0           # Visualization
+seaborn>=0.12.0             # Better plots
+
