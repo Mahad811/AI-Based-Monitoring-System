@@ -14,14 +14,15 @@
 *   **Safety Net:** Logic-based checks (Bed Exit, Floor Zone, Inactivity) to prevent misses.
 
 ### 2. Auditory Watchdog (Audio Module)
-*   **Distress Classification:** Detection of Thuds, Screams, Gasps, Moans.
-*   **Keyword Spotting:** Detection of "Help", "Nurse", "Madad" (Bilingual).
-*   **Status:** In Development (Simulated for Demos).
+*   **Distress Classification:** Detection of Thuds, Screams, Gasps, Moans using offline PyAudio + YAMNet.
+*   **Keyword Spotting:** Detection of "Help", "Nurse", "Madad" (Bilingual) using offline Faster-Whisper.
+*   **Privacy Shield:** Real-time VAD filtering out non-distress background conversations.
+*   **Status:** Fully Integrated (Concurrent non-blocking audio capture).
 
 ### 3. Cognitive Core (The "Brain")
 *   **Layer 1 (Reflex Engine):** Instant (<50ms) Bayesian scoring for immediate safety triggers.
-*   **Layer 2 (Reasoning Engine):** LLM-based (Gemini 2.5 Pro) analysis of event history for structured clinical alerts.
-*   **Corroboration:** Multi-sensor fusion (Vision + Audio) to validate critical alerts.
+*   **Layer 2 (Reasoning Engine):** LLM-based (Gemini 3 Flash) multimodal reasoning mapping camera frames + sensor history into structured JSON Incident Reports.
+*   **Corroboration:** Multi-sensor fusion (Vision + Audio) to gracefully validate or suppress critical alerts.
 
 ---
 
@@ -36,13 +37,14 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Run Live Demo
-This runs the full `VisionPipeline` on your webcam, with the `SimulatedAudio` interface enabled.
+### 2. Run Active Monitoring Pipeline
+This runs the fully integrated system, accessing your hardware camera and microphone concurrently.
 ```bash
-python scripts/demo_live.py
+# Add GEMINI_API_KEY to your .env file in the root directory first.
+python main.py
 ```
-*   **Controls:** `q` to quit, `d` to toggle debug overlay.
-*   **Audio Simulation:** Press `T` (Thud), `H` (Help), `S` (Silence) to inject audio events.
+*   **Controls:** Press `q` in the video window to quit.
+*   **Physical Testing:** Try coughing or groaning loudly to trigger YAMNet distress markers safely, or say "Nurse, I need help" to trigger the Faster-Whisper transcriber.
 
 ### 3. Run Evaluation
 Validate the vision models on the test dataset.
