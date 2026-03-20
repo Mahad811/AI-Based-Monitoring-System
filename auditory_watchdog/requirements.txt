@@ -1,0 +1,12 @@
+faster-whisper==1.0.3
+torch
+torchaudio
+tensorflow
+tensorflow-hub
+librosa
+numpy
+pyaudio
+soundfile
+scipy
+pymc
+arviz

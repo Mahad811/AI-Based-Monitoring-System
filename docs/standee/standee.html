@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Vital Guardian — FYP Standee</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Bebas+Neue&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.15.1/devicon.min.css" />
+    <style>
+        @page {
+            size: 24in 60in;
+            margin: 0;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg:     #ffffff;
+            --navy:   #0E2240;
+            --blue:   #1560BD;
+            --teal:   #00997A;
+            --text:   #0E2240;
+            --muted:  #4E6A8A;
+            --card:   rgba(255, 255, 255, 0.45);
+            --cBorder: rgba(14, 34, 64, 0.13);
+        }
+
+        html, body {
+            width: 24in;
+            height: 60in;
+            background: var(--bg);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            color: var(--text);
+            overflow: hidden;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        @media screen {
+            html, body {
+                overflow: auto;
+                height: auto;
+                min-height: 60in;
+            }
+        }
+
+        /* ── STANDEE GRID  4.8+6.8+8+26+14.4 = 60in ──────────── */
+        .standee {
+            width: 24in;
+            height: 60in;
+            background: var(--bg);
+            display: grid;
+            grid-template-rows:
+                4.8in   /* header       */
+                6.8in   /* title        */
+                4.5in   /* motivation   */
+                29.5in  /* architecture */
+                14.4in; /* impact+tools */
+            position: relative;
+        }
+
+        /* decorative gradient bar — top of standee */
+        .standee::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 0.08in;
+            background: linear-gradient(90deg, var(--blue), var(--teal));
+            z-index: 10;
+        }
+
+        /* ── HEADER ─────────────────────────────────────────────── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.12in 0.72in 0;
+            position: relative;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0.72in; right: 0.72in;
+            height: 0.025in;
+            background: linear-gradient(90deg, var(--blue), var(--teal) 50%, var(--blue));
+            opacity: 0.35;
+        }
+
+        .h-left { display: flex; align-items: center; gap: 0.35in; }
+
+        .logo-card { display: flex; align-items: center; }
+
+        .logo-card img { height: 2.8in; width: auto; display: block; border-radius: 50%; }
+
+        .uni .n1 {
+            font-weight: 800;
+            font-size: 0.72in;
+            color: var(--navy);
+            letter-spacing: 0.04em;
+        }
+
+        .uni .n2 {
+            font-size: 0.27in;
+            color: var(--muted);
+            margin-top: 0.06in;
+        }
+
+        .h-right { text-align: right; }
+
+        .h-right .tag {
+            font-size: 0.22in;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--blue);
+            margin-bottom: 0.05in;
+        }
+
+        .h-right .sname {
+            font-weight: 700;
+            font-size: 0.54in;
+            color: var(--navy);
+            margin-bottom: 0.18in;
+        }
+
+        .h-right .ttag {
+            font-size: 0.22in;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--blue);
+            margin-bottom: 0.08in;
+        }
+
+        .h-right .mem { font-size: 0.35in; color: var(--muted); line-height: 1.65; }
+        .h-right .mem b { color: var(--navy); font-weight: 600; }
+
+        /* ── TITLE ──────────────────────────────────────────────── */
+        .title {
+            background: #162D4A;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.8in;
+            gap: 0.16in;
+        }
+
+        .title .ey {
+            font-size: 0.3in;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--teal);
+            font-weight: 700;
+        }
+
+        .title h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.5in;
+            letter-spacing: 0.07em;
+            line-height: 1;
+            color: #ffffff;
+        }
+
+        .title .sub {
+            font-size: 0.48in;
+            color: rgba(255, 255, 255, 0.55);
+            font-weight: 400;
+            line-height: 1.4;
+            text-align: center;
+        }
+
+        /* ── MOTIVATION ─────────────────────────────────────────── */
+        .motivation {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.35in;
+            padding: 0.3in 0.72in;
+            align-items: stretch;
+        }
+
+        .mcard {
+            background: var(--card);
+            border-radius: 0.14in;
+            padding: 0.44in 0.44in 0.44in 0.52in;
+            display: flex;
+            flex-direction: column;
+            gap: 0.16in;
+            border: 1px solid var(--cBorder);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mcard::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 0.06in;
+        }
+
+        .mcard:nth-child(1)::before { background: var(--blue); }
+        .mcard:nth-child(2)::before { background: #C0392B; }
+        .mcard:nth-child(3)::before { background: var(--teal); }
+
+        .mcard .num {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.3in;
+            line-height: 1;
+            color: rgba(14, 34, 64, 0.06);
+            position: absolute;
+            right: 0.22in; top: 0.12in;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .mcard .lbl {
+            font-size: 0.44in;
+            font-weight: 800;
+            color: var(--navy);
+        }
+
+        .mcard .desc {
+            font-size: 0.33in;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        /* ── SECTION LABEL (shared) ─────────────────────────────── */
+        .sec-label {
+            display: flex;
+            align-items: center;
+            gap: 0.16in;
+        }
+
+        .sec-label .bar {
+            width: 0.07in;
+            height: 0.52in;
+            border-radius: 0.03in;
+            background: linear-gradient(to bottom, var(--blue), var(--teal));
+            flex-shrink: 0;
+        }
+
+        .sec-label .sh {
+            font-weight: 800;
+            font-size: 0.44in;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--navy);
+        }
+
+        /* ── ARCHITECTURE ───────────────────────────────────────── */
+        .arch-section {
+            display: flex;
+            flex-direction: column;
+            padding: 0.22in 0.72in 0.34in;
+            gap: 0.18in;
+        }
+
+        .arch-img-wrap {
+            flex: 1;
+            background: #162D4A;
+            border-radius: 0.14in;
+            padding: 0.16in;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(14, 34, 64, 0.25);
+        }
+
+        .arch-img-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* ── BOTTOM (impact + tools) ────────────────────────────── */
+        .bot-section {
+            display: flex;
+            flex-direction: column;
+            padding: 0.24in 0.72in 0.5in;
+            gap: 0.18in;
+        }
+
+        .bot-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.35in;
+        }
+
+        .impact-box,
+        .tools-box {
+            background: var(--card);
+            border-radius: 0.14in;
+            padding: 0.4in 0.45in;
+            display: flex;
+            flex-direction: column;
+            gap: 0.22in;
+            border: 1px solid var(--cBorder);
+        }
+
+        .box-h {
+            font-weight: 800;
+            font-size: 0.46in;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--navy);
+            padding-bottom: 0.14in;
+            border-bottom: 1.5px solid var(--cBorder);
+        }
+
+        .impact-items {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.28in 0.5in;
+        }
+
+        .ii { display: flex; align-items: flex-start; gap: 0.24in; }
+
+        .ii .dot {
+            flex-shrink: 0;
+            width: 0.88in;
+            height: 0.88in;
+            border-radius: 50%;
+            background: rgba(21, 96, 189, 0.08);
+            border: 1.5px solid rgba(21, 96, 189, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.44in;
+        }
+
+        .ii .lbl  { font-size: 0.42in; font-weight: 700; color: var(--navy); margin-bottom: 0.05in; }
+        .ii .desc { font-size: 0.34in; color: var(--muted); line-height: 1.45; }
+
+        /* tech grid */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 0.14in;
+        }
+
+        .tech-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.1in;
+            background: rgba(14, 34, 64, 0.045);
+            border: 1px solid var(--cBorder);
+            border-radius: 0.1in;
+            padding: 0.18in 0.1in;
+            text-align: center;
+        }
+
+        .tech-tile img {
+            width: 0.76in;
+            height: 0.76in;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .tech-tile i {
+            font-size: 0.76in;
+            line-height: 1;
+            width: 0.76in;
+            height: 0.76in;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tech-tile span {
+            font-size: 0.28in;
+            font-weight: 700;
+            color: var(--navy);
+            letter-spacing: 0.02em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="standee">
+
+        <!-- HEADER -->
+        <header class="header">
+            <div class="h-left">
+                <div class="logo-card">
+                    <img src="fast_logo.jpeg" alt="FAST NUCES" />
+                </div>
+                <div class="uni">
+                    <div class="n1">FAST NUCES</div>
+                    <div class="n2">National University of Computer &amp; Emerging Sciences</div>
+                </div>
+            </div>
+            <div class="h-right">
+                <div class="tag">Supervisor</div>
+                <div class="sname">Dr. Basharat Hussain</div>
+                <div class="ttag">Team Members</div>
+                <div class="mem"><b>Mahad Khan</b> &nbsp;—&nbsp; 22i-1028</div>
+                <div class="mem"><b>Hasan Waqar</b> &nbsp;—&nbsp; 22i-1192</div>
+                <div class="mem"><b>Eman Hassan</b> &nbsp;—&nbsp; 22i-0745</div>
+            </div>
+        </header>
+
+        <!-- TITLE -->
+        <div class="title">
+            <div class="ey">Final Year Project &nbsp;·&nbsp; Computer Science</div>
+            <h1>Vital Guardian</h1>
+            <div class="sub">AI-Powered Real-Time ICU Patient Monitoring System</div>
+        </div>
+
+        <!-- MOTIVATION -->
+        <div class="motivation">
+            <div class="mcard">
+                <div class="num">01</div>
+                <div class="lbl">The Problem</div>
+                <div class="desc">Global nursing shortages make continuous bedside observation
+                    unscalable — delayed responses to critical patient events cost lives.</div>
+            </div>
+            <div class="mcard">
+                <div class="num">02</div>
+                <div class="lbl">The Friction</div>
+                <div class="desc">Existing solutions rely on uncomfortable wearables or trigger
+                    excessive false alarms, causing dangerous alarm fatigue in clinical staff.</div>
+            </div>
+            <div class="mcard">
+                <div class="num">03</div>
+                <div class="lbl">Our Objective</div>
+                <div class="desc">A continuous, non-invasive, multi-modal system with
+                    sub-50 ms critical event detection via AI sensor-fusion. No wearables. No
+                    raw data off-device.</div>
+            </div>
+        </div>
+
+        <!-- SYSTEM ARCHITECTURE -->
+        <div class="arch-section">
+            <div class="sec-label">
+                <div class="bar"></div>
+                <div class="sh">System Architecture</div>
+            </div>
+            <div class="arch-img-wrap">
+                <img src="architecture_diagram.svg" alt="System Architecture Diagram" />
+            </div>
+        </div>
+
+        <!-- CORE IMPACT + TECHNOLOGY STACK -->
+        <div class="bot-section">
+            <div class="bot-grid">
+
+                <!-- IMPACT -->
+                <div class="impact-box">
+                    <div class="box-h">Core Impact</div>
+                    <div class="impact-items">
+                        <div class="ii">
+                            <div class="dot">🛡</div>
+                            <div>
+                                <div class="lbl">Combating Alarm Fatigue</div>
+                                <div class="desc">Multi-modal corroboration eliminates false-positive
+                                    single-sensor triggers.</div>
+                            </div>
+                        </div>
+                        <div class="ii">
+                            <div class="dot">🤝</div>
+                            <div>
+                                <div class="lbl">Staff Amplification</div>
+                                <div class="desc">A tireless digital co-attendant scaling oversight
+                                    without staffing increases.</div>
+                            </div>
+                        </div>
+                        <div class="ii">
+                            <div class="dot">🔒</div>
+                            <div>
+                                <div class="lbl">Privacy by Design</div>
+                                <div class="desc">Fully edge-deployed. Zero raw audio or video ever
+                                    leaves the room.</div>
+                            </div>
+                        </div>
+                        <div class="ii">
+                            <div class="dot">🩺</div>
+                            <div>
+                                <div class="lbl">Zero-Contact Monitoring</div>
+                                <div class="desc">No wearables. Complete patient comfort preserved
+                                    at all times.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TOOLS -->
+                <div class="tools-box">
+                    <div class="box-h">Technology Stack</div>
+                    <div class="tech-grid">
+                        <div class="tech-tile">
+                            <i class="devicon-python-plain colored"></i>
+                            <span>Python</span>
+                        </div>
+                        <div class="tech-tile">
+                            <i class="devicon-pytorch-plain colored"></i>
+                            <span>PyTorch</span>
+                        </div>
+                        <div class="tech-tile">
+                            <i class="devicon-tensorflow-original colored"></i>
+                            <span>TensorFlow</span>
+                        </div>
+                        <div class="tech-tile">
+                            <i class="devicon-opencv-plain colored"></i>
+                            <span>OpenCV</span>
+                        </div>
+                        <div class="tech-tile">
+                            <img src="logos/ultralytics.svg" alt="YOLOv8" />
+                            <span>YOLOv8</span>
+                        </div>
+                        <div class="tech-tile">
+                            <img src="logos/mediapipe.svg" alt="MediaPipe" />
+                            <span>MediaPipe</span>
+                        </div>
+                        <div class="tech-tile">
+                            <i class="devicon-flask-original" style="color:#444;"></i>
+                            <span>Flask</span>
+                        </div>
+                        <div class="tech-tile">
+                            <img src="logos/pydantic.svg" alt="Pydantic" />
+                            <span>Pydantic</span>
+                        </div>
+                        <div class="tech-tile">
+                            <img src="logos/numpy.svg" alt="NumPy" />
+                            <span>NumPy</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>
