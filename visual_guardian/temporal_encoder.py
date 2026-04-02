@@ -1,8 +1,8 @@
 """
-Temporal Encoder Module (V2: Temporal RGB Triplets)
+Temporal Encoder (MoViNet V2)
 
-Maintains a rolling buffer of frames and encodes 3 consecutive frames
-into a temporal RGB image for fall detection using RGB stacking.
+Maintains a 32-frame rolling buffer of raw BGR frames.
+Outputs 16-frame stride-2 clips in RGB [0,1] ready for Fall MoViNet-A2.
 """
 
 import cv2
@@ -11,109 +11,49 @@ from collections import deque
 
 
 class TemporalEncoder:
-    """
-    Encodes temporal context using 3 consecutive frames (V2: RGB stacking):
-    - Red channel = grayscale(frame[t-1])  # Past frame
-    - Green channel = grayscale(frame[t])   # Current frame (appearance)
-    - Blue channel = grayscale(frame[t+1]) # Future frame
-    
-    Uses consistent bbox cropping: detects person in middle frame (t),
-    then crops all 3 frames using the same bbox to preserve relative motion.
-    """
-    
-    def __init__(self, buffer_size=3, frame_size=224):
-        """
-        Args:
-            buffer_size: Number of frames to buffer (default: 3 = ~0.1s @ 30fps)
-            frame_size: Output image size (default: 224x224)
-        """
-        self.buffer_size = buffer_size
+    BUFFER = 32   # 32 raw frames -> stride-2 -> 16 model frames
+
+    def __init__(self, buffer_size=32, frame_size=224):
         self.frame_size = frame_size
-        self.frame_buffer = deque(maxlen=buffer_size)
-    
+        self.frame_buffer = deque(maxlen=self.BUFFER)
+
     def update(self, frame):
-        """
-        Add a frame to the rolling buffer
-        
-        Args:
-            frame: numpy array (H, W, 3) in BGR format
-        """
         self.frame_buffer.append(frame.copy())
-    
-    def encode(self, person_detector, padding=0.2):
+
+    def encode(self, detection=None):
         """
-        Encode current buffer into temporal RGB image (V2: RGB stacking)
-        
-        Args:
-            person_detector: PersonDetector instance (shared utility)
-            padding: Bbox padding factor (default: 0.2 = 20%)
-            
-        Returns:
-            temporal_rgb: (224, 224, 3) numpy array, or None if:
-                - Buffer not full (warmup period)
-                - No person detected in middle frame
-                - Cropping failed
+        Returns ndarray (16, frame_size, frame_size, 3) float32 in [0,1] RGB,
+        or None if buffer not full / no person detected.
         """
-        # Check if buffer is full
-        if len(self.frame_buffer) < self.buffer_size:
+        if len(self.frame_buffer) < self.BUFFER:
             return None
-        
-        # Get frames as list (should be 3 frames: [t-1, t, t+1])
+
         frames = list(self.frame_buffer)
-        
-        if len(frames) != 3:
-            return None
-        
-        # Detect person in MIDDLE frame (frame_t)
-        middle_frame = frames[1]  # Index 1 = middle frame
-        
-        detection = person_detector.detect(middle_frame, padding=padding)
-        
-        if detection is None:
-            return None
-        
-        bbox = detection['bbox']
-        x1, y1, x2, y2 = bbox
-        
-        # Validate bbox
-        if x2 <= x1 or y2 <= y1:
-            return None
-        
-        try:
-            # Crop all 3 frames using the SAME bbox (preserves motion within bbox)
-            cropped_frames = []
-            for frame in frames:
-                cropped = frame[y1:y2, x1:x2]
-                if cropped.size == 0:
-                    return None
-                # Convert to grayscale
-                gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-                cropped_frames.append(gray)
-            
-            # V2 Encoding: RGB stacking
-            # R channel = frame[t-1] (past)
-            # G channel = frame[t] (current - appearance)
-            # B channel = frame[t+1] (future)
-            R = cropped_frames[0]  # t-1
-            G = cropped_frames[1]  # t (current frame - appearance)
-            B = cropped_frames[2]  # t+1
-            
-            # Stack as RGB
-            temporal_rgb = np.stack([R, G, B], axis=-1)
-            
-            # Resize to target size
-            temporal_rgb = cv2.resize(temporal_rgb, (self.frame_size, self.frame_size))
-            
-            return temporal_rgb
-            
-        except Exception as e:
-            # Handle any cropping/resizing errors
-            return None
-    
+
+        clip = []
+        for i in range(0, self.BUFFER, 2):   # stride-2: indices 0,2,4,...,30 -> 16 frames
+            frm = frames[i]
+            if detection is not None:
+                x1, y1, x2, y2 = detection['bbox']
+                x1, y1 = max(0, x1), max(0, y1)
+                if x2 > x1 and y2 > y1:
+                    crop = frm[y1:y2, x1:x2]
+                    if crop.size > 0:
+                        frm = cv2.resize(crop, (self.frame_size, self.frame_size))
+                    else:
+                        frm = cv2.resize(frm, (self.frame_size, self.frame_size))
+                else:
+                    frm = cv2.resize(frm, (self.frame_size, self.frame_size))
+            else:
+                frm = cv2.resize(frm, (self.frame_size, self.frame_size))
+
+            rgb = cv2.cvtColor(frm, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+            clip.append(rgb)
+
+        return np.stack(clip)   # (16, H, W, 3)
+
     def reset(self):
-        """Clear the frame buffer"""
         self.frame_buffer.clear()
-    
+
     def is_ready(self):
-        """Check if buffer is full and ready to encode"""
-        return len(self.frame_buffer) == self.buffer_size
+        return len(self.frame_buffer) == self.BUFFER

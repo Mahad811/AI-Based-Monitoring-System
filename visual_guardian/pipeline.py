@@ -39,7 +39,8 @@ class VisionPipeline:
         # Shared person detector
         self.person_detector = PersonDetector(
             model_path=config['person_detector']['model'],
-            confidence=config['person_detector']['confidence']
+            confidence=config['person_detector']['confidence'],
+            device=config['person_detector'].get('device', 'cpu')
         )
         print("✓ Person detector loaded")
         
@@ -115,7 +116,9 @@ class VisionPipeline:
                 
                 print("✓ Seizure classifier loaded")
             except Exception as e:
+                import traceback
                 print(f"⚠ Seizure classifier not loaded: {e}")
+                traceback.print_exc()
                 print("  (Fall detection will still work)")
         
         # State Machine Tracking
@@ -189,20 +192,21 @@ class VisionPipeline:
             'state': self.patient_state,  # Add state to output
             'debug_info': ''
         }
-        
+        # ── 1. Centralized YOLO Person Detection ──
+        # Run exactly ONCE per frame. Re-used by Fall, Seizure, and Pose components 
+        # to prevent redundant CPU workloads causing FPS drops.
+        detection = self.person_detector.detect(frame, padding=0.2)
+        if detection:
+            event['person_bbox'] = list(detection['bbox'])
+
         # Fall detection (only if fall classifier loaded)
         if self.fall_classifier is not None and self.temporal_encoder.is_ready():
             # Bed-exit filter AND Context Manager
-            # Logic: 
-            # 1. Check Bed Exit -> If Exiting, set state to EXITING (High Sensitivity)
-            # 2. Check Safety Net -> If Fallen, set state to FALLEN (Result Detection)
             
             skip_fall_detection = False
             current_threshold = self.fall_threshold
             
             if self.pose_analyzer is not None:
-                detection = self.person_detector.detect(frame, padding=0.2)
-                
                 # Inactivity / Missing Patient Check
                 if detection:
                     self.last_person_seen_time = datetime.now()
@@ -280,11 +284,8 @@ class VisionPipeline:
                         
             # Only run fall detection if we are NOT securely in bed
             if not skip_fall_detection:
-                # Encode temporal RGB
-                temporal_rgb = self.temporal_encoder.encode(
-                    self.person_detector,
-                    padding=0.2
-                )
+                # Encode temporal RGB using the centralized detection
+                temporal_rgb = self.temporal_encoder.encode(detection=detection)
                 
                 if temporal_rgb is not None:
                     # Classify
@@ -298,11 +299,6 @@ class VisionPipeline:
                             event['fall_smoothed'] = self.fall_smoother.update(fall_result['fall_prob'])
                         else:
                             event['fall_smoothed'] = fall_result['fall_prob']
-                        
-                        # Detect person bbox for visualization (quick re-detection)
-                        detection = self.person_detector.detect(frame, padding=0.2)
-                        if detection:
-                            event['person_bbox'] = list(detection['bbox'])
                         
                         # Determine event type based on RAW probability (for high recall)
                         # Smoothed prob is used for visualization stability only.
@@ -328,10 +324,7 @@ class VisionPipeline:
                 
                 if self.seizure_classifier.is_ready():
                     # Classify current window
-                    seizure_result = self.seizure_classifier.classify(
-                        self.person_detector,
-                        padding=0.2
-                    )
+                    seizure_result = self.seizure_classifier.classify(detection=detection)
                     
                     if seizure_result is not None:
                         event['seizure_confidence'] = seizure_result['seizure_prob']
@@ -340,12 +333,6 @@ class VisionPipeline:
                         event['seizure_smoothed'] = self.seizure_smoother.update(
                             seizure_result['seizure_prob']
                         )
-                        
-                        # Update person bbox if not already set
-                        if event['person_bbox'] is None:
-                            detection = self.person_detector.detect(frame, padding=0.2)
-                            if detection:
-                                event['person_bbox'] = list(detection['bbox'])
                         
                         # Update event type only if not already fall (fall takes priority)
                         # USE RAW CONFIDENCE for trigger (matches offline evaluation max-aggregation)
@@ -372,7 +359,7 @@ class VisionPipeline:
         return event
     
     def reset(self):
-        """Reset all buffers and smoothers"""
+        """Reset all buffers, smoothers, and stateful detection history."""
         self.temporal_encoder.reset()
         if self.fall_smoother is not None:
             self.fall_smoother.reset()
@@ -381,3 +368,12 @@ class VisionPipeline:
         if self.seizure_smoother is not None:
             self.seizure_smoother.reset()
         self.seizure_frame_counter = 0
+
+        # Reset person detector cache so the first frames of the next segment
+        # are not cropped using a stale bounding box from the previous clip.
+        self.person_detector.reset()
+
+        # Reset all stateful fields that persist between segments
+        self.pose_history.clear()
+        self.restlessness_timer       = 0.0
+        self.last_person_seen_time    = datetime.now()

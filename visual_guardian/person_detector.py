@@ -1,7 +1,8 @@
 """
 Person Detector Module
 
-Wraps YOLOv8n pretrained on COCO for person detection.
+Wraps YOLOv11n pretrained on COCO for person detection.
+Supports OpenVINO-exported models for Intel iGPU acceleration.
 This is a shared utility used by both fall and seizure classifiers.
 """
 
@@ -11,18 +12,30 @@ from ultralytics import YOLO
 
 class PersonDetector:
     """
-    Detects persons in video frames using YOLOv8n pretrained on COCO.
+    Detects persons in video frames using YOLO pretrained on COCO.
     Returns bounding boxes with optional padding for use in temporal encoders.
     """
     
-    def __init__(self, model_path='yolov8n.pt', confidence=0.5):
+    def __init__(self, model_path='yolo11n_openvino_model', confidence=0.5, process_every=3, device='intel:cpu'):
         """
         Args:
-            model_path: Path to YOLO model weights (default: yolov8n.pt - COCO pretrained)
+            model_path: Path to YOLO model or OpenVINO folder (e.g. 'yolo11n_openvino_model')
             confidence: Minimum confidence threshold for detections
+            process_every: Run heavy YOLO inference every N frames. Caches box. (Optimize CPU)
+            device: OpenVINO device string — 'intel:gpu' for Intel iGPU, 'intel:cpu' for CPU
         """
         self.model = YOLO(model_path)
         self.confidence = confidence
+        self.process_every = process_every
+        self.device = device
+        self._frame_count = 0
+        self._last_detection = None
+        # Simple runtime check so you can see what backend/device is being used
+        try:
+            print(f"[PersonDetector] Loaded model='{model_path}' with device='{self.device}'")
+        except Exception:
+            # Avoid crashing on environments where stdout is not available
+            pass
     
     def detect(self, frame, padding=0.0):
         """
@@ -39,10 +52,18 @@ class PersonDetector:
                 - 'center': (cx, cy) center point of bbox
             Returns None if no person detected
         """
-        # Run detection (class 0 = person in COCO)
-        results = self.model(frame, verbose=False, classes=[0])
+        self._frame_count += 1
+        
+        # ── Frame Skip Optimization ──
+        # Patient in bed doesn't move much in 3 frames (100ms). Reuse cached box!
+        if self._frame_count % self.process_every != 1 and self._last_detection is not None:
+            return self._last_detection
+
+        # Run heavy detection
+        results = self.model(frame, verbose=False, classes=[0], device=self.device)
         
         if len(results) == 0 or len(results[0].boxes) == 0:
+            self._last_detection = None
             return None
         
         # Get highest confidence detection
@@ -77,11 +98,13 @@ class PersonDetector:
         # Calculate center
         center = (int((x1_padded + x2_padded) / 2), int((y1_padded + y2_padded) / 2))
         
-        return {
+        result = {
             'bbox': bbox_padded,
             'confidence': confidence,
             'center': center
         }
+        self._last_detection = result
+        return result
     
     def detect_batch(self, frames, padding=0.0):
         """
@@ -95,3 +118,12 @@ class PersonDetector:
             list of detection dicts (or None for frames with no detection)
         """
         return [self.detect(frame, padding) for frame in frames]
+
+    def reset(self):
+        """
+        Reset cached detection state. Call at every segment boundary so the
+        stale bounding box from the previous clip is never reused as the first
+        detection in the new clip.
+        """
+        self._frame_count    = 0
+        self._last_detection = None

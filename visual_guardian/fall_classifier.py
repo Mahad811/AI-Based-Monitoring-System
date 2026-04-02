@@ -1,166 +1,179 @@
-"""
-Fall Classifier Module (V2 - Temporal RGB Triplets)
-
-Loads EfficientNet-B0 trained on 3-frame temporal RGB and performs inference.
-Supports both single model and 5-fold ensemble.
-"""
-
-import torch
-import torch.nn as nn
+import os
+import time
 import numpy as np
-import timm
+import cv2
+import base64
+import requests
+import threading
 from pathlib import Path
+from .movinet_loader import load_movinet
+
+FALL_CLIP_FRAMES = 16
 
 
 class FallClassifier:
-    """
-    Binary classifier (fall vs normal) using EfficientNet-B0.
-    Input: temporal RGB images (224x224) using RGB stacking:
-        - R = grayscale(frame[t-1])  # Past frame
-        - G = grayscale(frame[t])     # Current frame (appearance)
-        - B = grayscale(frame[t+1])   # Future frame
-    Includes appearance information in G channel for temporal context.
-    Supports 5-model ensemble for improved robustness.
-    """
-    
-    def __init__(self, model_path, device='auto', use_ensemble=True):
-        """
-        Args:
-            model_path: Path to trained model weights (best.pt or directory with fold*.pt)
-            device: 'auto', 'cuda', or 'cpu'
-            use_ensemble: If True and fold models exist, use ensemble
-        """
-        # Determine device
-        if device == 'auto':
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    def __init__(self, model_path, device='auto', use_ensemble=False):
+        self.mode       = os.getenv("INFERENCE_MODE", "LOCAL").upper()
+        self.kaggle_url = os.getenv("KAGGLE_ENDPOINT", "")
+
+        # ── Async inference state (KAGGLE mode only) ─────────────────────────
+        self._last_fall_prob = 0.0
+        self._infer_lock     = threading.Lock()
+        self._pending        = False   # True while an HTTP call is in-flight
+
+        # Generation counter — incremented on every segment boundary.
+        # Each background thread captures the generation at launch time; if the
+        # generation has advanced by the time the response arrives the result is
+        # silently discarded.  This makes reset_for_segment() instantaneous
+        # (no blocking wait) while still preventing cross-segment contamination.
+        self._generation = 0
+        # Single-slot queue: when _pending=True, classify() stores the most
+        # recent clip here instead of dropping it.  The background thread drains
+        # it immediately after finishing so the best available window is always
+        # evaluated, not just the first one.
+        self._queued_clip = None
+        self._queued_gen  = 0
+
+        if self.mode == "KAGGLE":
+            print("🚀 Initialize FallClassifier in KAGGLE Mode (async fire-and-forget)")
+            if not self.kaggle_url:
+                print("⚠️  KAGGLE_ENDPOINT not set in .env! Inference will fail.")
+            self.model = None
         else:
-            self.device = torch.device(device)
-        
-        # Load models
-        model_path = Path(model_path)
-        self.models = []
-        
-        # Load ensemble models (fold0.pt ... fold4.pt)
-        if use_ensemble and model_path.is_dir():
-            fold_paths = sorted(model_path.glob('fold*.pt'))
-            if len(fold_paths) >= 3:
-                print(f"Loading {len(fold_paths)} fall classifier models (ensemble)...")
-                for fold_path in fold_paths:
-                    model = timm.create_model('efficientnet_b0', pretrained=False, num_classes=2,
-                                             drop_rate=0.5, drop_path_rate=0.2)
-                    model.load_state_dict(torch.load(fold_path, map_location=self.device))
-                    model.to(self.device)
-                    model.eval()
-                    self.models.append(model)
-                print(f"✓ Loaded {len(self.models)} fall classifier models")
+            print("Loading MoViNet-A2 Fall Classifier locally...")
+            model_path = str(model_path)
+            if not Path(model_path).exists():
+                raise FileNotFoundError(f"Fall model not found: {model_path}")
+            self.model = load_movinet(model_path, clip_frames=FALL_CLIP_FRAMES)
+            print("✓ Fall MoViNet-A2 loaded locally successfully")
+
+    # ── Encoding ──────────────────────────────────────────────────────────────
+    def _encode_clip_to_b64(self, clip: np.ndarray):
+        frames_b64 = []
+        for i in range(clip.shape[0]):
+            img_uint8 = (clip[i] * 255.0).astype(np.uint8)
+            img_bgr   = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR)
+            _, buf    = cv2.imencode('.jpg', img_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+            frames_b64.append(base64.b64encode(buf).decode('utf-8'))
+        return frames_b64
+
+    # ── Background HTTP worker ────────────────────────────────────────────────
+    def _fire_kaggle_request(self, clip: np.ndarray, gen: int):
+        """
+        Runs in a daemon thread.
+        *gen* is the segment generation captured at launch time.
+        If self._generation has advanced by the time we respond, the result is
+        discarded so it cannot contaminate the current segment.
+        """
+        try:
+            frames_b64 = self._encode_clip_to_b64(clip)
+            resp = requests.post(
+                f"{self.kaggle_url.rstrip('/')}/predict/fall",
+                json={"frames_b64": frames_b64},
+                timeout=45.0
+            )
+            if resp.status_code == 200:
+                prob = float(resp.json().get("fall_prob", 0.0))
+                with self._infer_lock:
+                    if self._generation == gen:      # still the same segment?
+                        self._last_fall_prob = prob
+                        print(f"  [FallClassifier] fall_prob={prob:.3f} (gen {gen})")
+                    else:
+                        print(f"  [FallClassifier] Discarding stale result "
+                              f"prob={prob:.3f} (gen {gen} vs current {self._generation})")
             else:
-                # Fallback to single best.pt in directory
-                best_path = model_path / 'best.pt'
-                if best_path.exists():
-                    model = timm.create_model('efficientnet_b0', pretrained=False, num_classes=2)
-                    model.load_state_dict(torch.load(best_path, map_location=self.device))
-                    model.to(self.device)
-                    model.eval()
-                    self.models.append(model)
-                    print(f"✓ Loaded single fall classifier model (best.pt)")
-        else:
-            # Single model file
-            if model_path.is_file():
-                model = timm.create_model('efficientnet_b0', pretrained=False, num_classes=2)
-                model.load_state_dict(torch.load(model_path, map_location=self.device))
-                model.to(self.device)
-                model.eval()
-                self.models.append(model)
-                print(f"✓ Loaded single fall classifier model")
-            else:
-                raise FileNotFoundError(f"Model path not found: {model_path}")
-        
-        # ImageNet normalization (used during training)
-        self.mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1).to(self.device)
-        self.std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1).to(self.device)
-        
-        # Class names (assumes ImageFolder order: fall=0, normal=1)
-        self.class_names = ['fall', 'normal']
-    
-    def preprocess(self, temporal_rgb):
+                print(f"[FallClassifier] Kaggle API error {resp.status_code}: "
+                      f"{resp.text[:120]}")
+        except Exception as e:
+            print(f"[FallClassifier] Kaggle request failed: {e}")
+        finally:
+            # ── Drain the queue (collect values inside lock, start thread outside) ──
+            next_clip = None
+            next_gen  = 0
+            with self._infer_lock:
+                if self._generation == gen:       # still the current segment?
+                    self._pending = False
+                    if self._queued_clip is not None:
+                        next_clip         = self._queued_clip
+                        next_gen          = self._queued_gen
+                        self._queued_clip = None
+                        self._queued_gen  = 0
+                        self._pending     = True   # re-latch before releasing lock
+
+            if next_clip is not None:
+                t = threading.Thread(
+                    target=self._fire_kaggle_request,
+                    args=(next_clip, next_gen),
+                    daemon=True
+                )
+                t.start()
+
+    # ── Segment lifecycle ─────────────────────────────────────────────────────
+    def reset_for_segment(self) -> None:
         """
-        Preprocess temporal RGB image for inference
-        
+        NON-BLOCKING. Call at the START of every new segment (no asyncio.to_thread needed).
+
+        Advances the generation counter so any in-flight HTTP request from the
+        previous segment will be silently discarded when it eventually arrives.
+        Immediately zeroes _last_fall_prob, _pending and the queued-clip slot so
+        this segment starts with a completely clean state without waiting at all.
+        """
+        with self._infer_lock:
+            self._generation    += 1
+            self._last_fall_prob = 0.0
+            self._queued_clip    = None
+            self._queued_gen     = 0
+        self._pending = False   # safe: old thread checks generation before using it
+
+    def wait_for_pending(self, timeout: float = 25.0) -> None:
+        """
+        Spin-wait until the in-flight request for the CURRENT generation finishes
+        or *timeout* seconds elapse.  Call via asyncio.to_thread() from the demo loop.
+        25 s is enough for Kaggle to respond and short enough that it doesn't freeze
+        a 5-second-clip demo.
+        """
+        t0 = time.time()
+        while self._pending and (time.time() - t0) < timeout:
+            time.sleep(0.05)
+
+    # ── Public interface ──────────────────────────────────────────────────────
+    def classify(self, clip):
+        """
         Args:
-            temporal_rgb: (224, 224, 3) numpy array [0-255]
-            
+            clip: ndarray (16, 224, 224, 3) float32 [0,1] RGB
         Returns:
-            tensor: (1, 3, 224, 224) normalized tensor
+            dict with fall_prob / normal_prob / class / confidence   OR   None
         """
-        # Convert to float and normalize to [0, 1]
-        img = temporal_rgb.astype(np.float32) / 255.0
-        
-        # Convert to tensor (H, W, C) -> (C, H, W)
-        img = torch.from_numpy(img).permute(2, 0, 1).float()
-        
-        # Normalize with ImageNet stats
-        img = (img - self.mean) / self.std
-        
-        # Add batch dimension
-        img = img.unsqueeze(0)
-        
-        return img
-    
-    def classify(self, temporal_rgb):
-        """
-        Classify a temporal RGB image (with ensemble if available)
-        
-        Args:
-            temporal_rgb: (224, 224, 3) numpy array from TemporalEncoder
-            
-        Returns:
-            dict with keys:
-                - 'class': 'fall' or 'normal'
-                - 'confidence': probability of predicted class (0-1)
-                - 'fall_prob': probability of fall class (0-1)
-                - 'normal_prob': probability of normal class (0-1)
-        """
-        if temporal_rgb is None:
+        if clip is None:
             return None
-        
-        # Preprocess
-        img_tensor = self.preprocess(temporal_rgb).to(self.device)
-        
-        # Inference with ensemble
-        with torch.no_grad():
-            if len(self.models) == 1:
-                # Single model
-                output = self.models[0](img_tensor)
-                probs = torch.softmax(output, dim=1)
+
+        if self.mode == "KAGGLE" and self.kaggle_url:
+            gen = self._generation          # capture current generation
+            if not self._pending:
+                self._pending = True
+                t = threading.Thread(
+                    target=self._fire_kaggle_request,
+                    args=(clip.copy(), gen),
+                    daemon=True
+                )
+                t.start()
             else:
-                # Ensemble: average probabilities from all models
-                all_probs = []
-                for model in self.models:
-                    output = model(img_tensor)
-                    probs = torch.softmax(output, dim=1)
-                    all_probs.append(probs)
-                
-                # Average across all models
-                probs = torch.stack(all_probs).mean(dim=0)
-            
-            pred_idx = probs.argmax(dim=1).item()
-            confidence = probs[0, pred_idx].item()
-        
+                # Queue the most-recent clip instead of dropping it silently.
+                # The background thread will fire it as soon as it finishes.
+                with self._infer_lock:
+                    self._queued_clip = clip.copy()
+                    self._queued_gen  = gen
+            # Return the last known result immediately — never block the frame loop
+            with self._infer_lock:
+                fall_prob = self._last_fall_prob
+        else:
+            x         = np.expand_dims(clip, axis=0)
+            fall_prob = float(self.model.predict_on_batch(x).flatten()[0])
+
+        normal_prob = 1.0 - fall_prob
         return {
-            'class': self.class_names[pred_idx],
-            'confidence': confidence,
-            'fall_prob': probs[0, 0].item(),
-            'normal_prob': probs[0, 1].item()
+            'class':       'fall' if fall_prob >= 0.55 else 'normal',
+            'confidence':  max(fall_prob, normal_prob),
+            'fall_prob':   fall_prob,
+            'normal_prob': normal_prob,
         }
-    
-    def classify_batch(self, temporal_rgb_batch):
-        """
-        Classify multiple temporal RGB images
-        
-        Args:
-            temporal_rgb_batch: list of (224, 224, 3) numpy arrays
-            
-        Returns:
-            list of classification dicts
-        """
-        return [self.classify(img) for img in temporal_rgb_batch]
