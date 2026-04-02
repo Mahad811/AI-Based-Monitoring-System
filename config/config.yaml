@@ -4,22 +4,23 @@
 vision:
   # Shared person detector (used by both fall and seizure classifiers)
   person_detector:
-    model: yolov8n.pt              # Pretrained COCO model
+    model: yolo11n_openvino_model   # OpenVINO IR folder exported from yolo11n.pt
     confidence: 0.10                # Lowered from 0.5 — catches partially visible patients
+    device: "intel:gpu"             # OpenVINO device: 'intel:gpu' (iGPU) or 'intel:cpu'
   
   # Fall classifier V2 (temporal RGB triplets with ensemble support)
   # Model path can be:
   #   - Directory with fold*.pt files for 5-model ensemble (recommended)
   #   - Single best.pt file for single model
   fall_classifier:
-    model: fall_detection/fall_v2_ensemble/    # 5-model ensemble (fold0.pt–fold4.pt)
-    threshold: 0.64                    # Best F1 threshold — 85% Recall, 82.9% F1 at video level
+    model: fall_detection/fall_model_best.keras    # New MoViNet 16-frame model
+    threshold: 0.55                    # Optimal mathematical threshold from latest test
     window_size: 10                    # Frames to average for smoothing
   
-  # Temporal encoder (3-frame RGB stacking for fall detection V2)
+  # Temporal encoder (32-frame RAW RGB rolling buffer for MoViNet-A2)
   temporal_encoder:
     frame_size: 224                 # Output image size
-    buffer_size: 3                   # Number of frames in temporal encoding (V2: RGB stacking, R=frame[t-1], G=frame[t], B=frame[t+1])
+    buffer_size: 32                  # Number of frames stored for stride-2 inference
   
   # Bed-exit detection (preventative)
   bed_exit:
@@ -40,13 +41,12 @@ vision:
     darkness_threshold: 30.0         # Average pixel intensity (0-255) below which vision is disabled
     inactivity_timeout_sec: 600      # 10 minutes (Alert if patient missing for this long)
 
-  # Seizure classifier V3 (dual ensemble: motion + temporal)
-  # Expects seizure_detection/seizure_v3_ensemble/fold*.pt and seizure_detection/seizure_temporal_ensemble/fold*.pt
+  # Seizure classifier (New MoViNet-A2 32-frame model)
   seizure_classifier:
-    model: seizure_detection/             # Base dir containing seizure_v3_ensemble/ and seizure_temporal_ensemble/
-    window_seconds: 2.0                   # Motion summary window duration
+    model: seizure_detection/seizure_model_best.keras
+    window_seconds: 2.15                  # 64 frames buffered -> 32 frames sampled at stride 2
     stride_seconds: 0.5                  # How often to classify (every 0.5 sec)
-    threshold: 0.24                      # Video-level max-aggregation threshold (optimal from training eval)
+    threshold: 0.30                      # Validated best generalized threshold
     window_size: 8                       # Frames to average for smoothing
     
 # Audio Module Settings
