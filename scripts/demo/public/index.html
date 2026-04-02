@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vital Guardian — AI-Powered ICU Monitor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+        <div class="logo-container">
+            <div class="pulse-dot"></div>
+            <h1>VITAL GUARDIAN</h1>
+            <span class="subtitle">AI-Powered ICU Monitoring</span>
+        </div>
+        <div class="system-status">
+            <button id="btn-manual-pause" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; border: 1px solid var(--panel-border);">⏸ Pause</button>
+            <button id="btn-manual-skip" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; border: 1px solid var(--panel-border);">⏭ Skip</button>
+            <span id="fps-counter" class="fps fps-slow">0 FPS</span>
+            <span class="device-tag">LIVE PROCESSING</span>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        
+        <!-- Left Column: Video Feed & Scene Info -->
+        <section class="video-section">
+            <div class="video-container">
+                <!-- Video stream container -->
+                <img id="video-stream" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Loading stream...">
+                
+                <!-- Playback Controls Overlay -->
+                <div id="controls-overlay" class="controls-overlay hidden">
+                    <div class="control-box">
+                        <h3 id="control-status">AI Analyzing Incident...</h3>
+                        <p>Video paused to review Gemini 3.0 Flash verification.</p>
+                        <div class="btn-group">
+                            <button id="btn-resume" class="btn btn-primary">► Resume Video</button>
+                            <button id="btn-skip" class="btn btn-secondary">⏭ Skip Segment</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Overlay for transitions between datasets -->
+                <div id="transition-overlay" class="overlay hidden">
+                    <div class="spinner"></div>
+                    <h2 id="transition-text">Switching Camera...</h2>
+                </div>
+            </div>
+            
+            <div class="segment-info">
+                <span class="segment-badge" id="segment-progress">[1/7]</span>
+                <span class="segment-title" id="segment-title">Waiting for video stream...</span>
+            </div>
+        </section>
+
+        <!-- Right Column: Patient Status & Alert Log -->
+        <aside class="sidebar">
+            
+            <!-- Patient Status Card -->
+            <div class="card patient-status">
+                <p class="label">CURRENT PATIENT</p>
+                <h2 id="patient-name">Monitoring...</h2>
+                <div class="status-indicator" id="status-indicator">
+                    <span class="status-dot"></span>
+                    <span id="status-text">SYSTEM STANDBY</span>
+                </div>
+            </div>
+
+            <!-- AI Alert Log -->
+            <div class="alert-log-container">
+                <p class="label">INCIDENT LOG (COGNITIVE CORE VERIFIED)</p>
+                <div class="alert-feed" id="alert-feed">
+                    <div class="empty-state" id="empty-alerts">
+                        No incidents detected.
+                    </div>
+                    <!-- Alerts will be injected here dynamically -->
+                </div>
+            </div>
+            
+        </aside>
+    </main>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
