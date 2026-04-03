@@ -15,7 +15,7 @@ vision:
   fall_classifier:
     model: fall_detection/fall_model_best.keras    # New MoViNet 16-frame model
     threshold: 0.55                    # Optimal mathematical threshold from latest test
-    window_size: 10                    # Frames to average for smoothing
+    window_size: 3                     # Reduced from 10 — faster alert rise-time
   
   # Temporal encoder (32-frame RAW RGB rolling buffer for MoViNet-A2)
   temporal_encoder:
@@ -47,7 +47,7 @@ vision:
     window_seconds: 2.15                  # 64 frames buffered -> 32 frames sampled at stride 2
     stride_seconds: 0.5                  # How often to classify (every 0.5 sec)
     threshold: 0.30                      # Validated best generalized threshold
-    window_size: 8                       # Frames to average for smoothing
+    window_size: 3                       # Reduced from 8 — faster alert rise-time
     
 # Audio Module Settings
 audio:
