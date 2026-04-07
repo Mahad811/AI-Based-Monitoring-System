@@ -11,6 +11,9 @@ from .movinet_loader import load_movinet
 
 SEIZURE_CLIP_FRAMES = 32
 SEIZURE_BUFFER      = 64   # 64 raw → stride-2 → 32 model frames
+MAX_CONCURRENT      = 1    # keep at 1 — free ngrok tunnels drop SSL under parallel load
+MAX_RETRIES         = 3    # retry failed requests with exponential backoff
+RETRY_BASE_S        = 0.5  # first retry after 0.5s, then 1s, then 2s
 
 
 class SeizureClassifier:
@@ -24,16 +27,11 @@ class SeizureClassifier:
         # ── Async inference state (KAGGLE mode only) ─────────────────────────
         self._last_seizure_prob = 0.0
         self._infer_lock        = threading.Lock()
-        self._pending           = False
+        self._in_flight         = 0   # number of HTTP requests currently in-flight
 
-        # Generation counter — same pattern as FallClassifier.
-        # Stale in-flight responses are silently discarded after a segment reset.
+        # Generation counter — incremented on every segment reset so that
+        # results from the previous segment are silently discarded.
         self._generation  = 0
-        # Single-slot queue: when _pending=True, classify() stores the most
-        # recent clip here.  The background thread drains it immediately after
-        # finishing so the *latest* window is always evaluated.
-        self._queued_clip = None
-        self._queued_gen  = 0
 
         if self.mode == "KAGGLE":
             print("🚀 Initialize SeizureClassifier in KAGGLE Mode (async fire-and-forget)")
@@ -61,78 +59,65 @@ class SeizureClassifier:
     # ── Background HTTP worker ────────────────────────────────────────────────
     def _fire_kaggle_request(self, clip: np.ndarray, gen: int):
         """
-        Runs in a daemon thread.
-        *gen* is the segment generation at launch time; results from stale
-        generations are silently discarded.
-        After finishing, immediately drains the single-slot queue if non-empty
-        so the most-recent clip window is always evaluated even while a prior
-        request was in-flight.
+        Runs in a daemon thread. Retries up to MAX_RETRIES times with
+        exponential backoff so transient SSL/EOF tunnel errors are recovered
+        automatically without spamming the console.
         """
-        try:
-            frames_b64 = self._encode_clip_to_b64(clip)
-            resp = requests.post(
-                f"{self.kaggle_url.rstrip('/')}/predict/seizure",
-                json={"frames_b64": frames_b64},
-                timeout=45.0
-            )
-            if resp.status_code == 200:
-                prob = float(resp.json().get("seizure_prob", 0.0))
-                with self._infer_lock:
-                    if self._generation == gen:
-                        self._last_seizure_prob = prob
-                        print(f"  [SeizureClassifier] seizure_prob={prob:.3f} (gen {gen})")
-                    else:
-                        print(f"  [SeizureClassifier] Discarding stale result "
-                              f"prob={prob:.3f} (gen {gen} vs current {self._generation})")
-            else:
-                print(f"[SeizureClassifier] Kaggle API error {resp.status_code}: "
-                      f"{resp.text[:120]}")
-        except Exception as e:
-            print(f"[SeizureClassifier] Kaggle request failed: {e}")
-        finally:
-            # ── Drain the queue (outside the lock to avoid deadlock) ──────────
-            next_clip = None
-            next_gen  = 0
-            with self._infer_lock:
-                if self._generation == gen:       # still the current segment?
-                    self._pending = False
-                    if self._queued_clip is not None:
-                        next_clip         = self._queued_clip
-                        next_gen          = self._queued_gen
-                        self._queued_clip = None
-                        self._queued_gen  = 0
-                        self._pending     = True   # re-latch before releasing lock
+        url        = f"{self.kaggle_url.rstrip('/')}/predict/seizure"
+        frames_b64 = self._encode_clip_to_b64(clip)
+        last_err   = None
+        succeeded  = False
 
-            if next_clip is not None:
-                t = threading.Thread(
-                    target=self._fire_kaggle_request,
-                    args=(next_clip, next_gen),
-                    daemon=True
-                )
-                t.start()
+        try:
+            for attempt in range(MAX_RETRIES):
+                with self._infer_lock:
+                    if self._generation != gen:
+                        return  # segment changed — discard silently
+
+                try:
+                    resp = requests.post(
+                        url,
+                        json={"frames_b64": frames_b64},
+                        timeout=45.0
+                    )
+                    if resp.status_code == 200:
+                        prob = float(resp.json().get("seizure_prob", 0.0))
+                        with self._infer_lock:
+                            if self._generation == gen and prob > self._last_seizure_prob:
+                                self._last_seizure_prob = prob
+                        print(f"  [SeizureClassifier] seizure_prob={prob:.3f}")
+                        succeeded = True
+                        return
+                    else:
+                        last_err = f"HTTP {resp.status_code}"
+                except Exception as e:
+                    last_err = str(e)
+
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BASE_S * (2 ** attempt))
+
+            if not succeeded:
+                print(f"[SeizureClassifier] Failed after {MAX_RETRIES} attempts: "
+                      f"{(last_err or '')[:100]}")
+        finally:
+            with self._infer_lock:
+                self._in_flight = max(0, self._in_flight - 1)
 
     # ── Segment lifecycle ─────────────────────────────────────────────────────
     def reset_for_segment(self) -> None:
         """
-        NON-BLOCKING. Call at the START of every new segment.
-        Advances the generation counter so any in-flight HTTP request from the
-        previous segment will be silently discarded when it eventually arrives.
-        Immediately zeroes all cached state so the new segment starts clean.
+        NON-BLOCKING. Advances generation so stale in-flight results are discarded.
+        Resets cached probability so the new segment starts clean.
         """
         with self._infer_lock:
-            self._generation     += 1
+            self._generation       += 1
             self._last_seizure_prob = 0.0
-            self._queued_clip    = None
-            self._queued_gen     = 0
-        self._pending = False
+            self._in_flight         = 0
 
     def wait_for_pending(self, timeout: float = 25.0) -> None:
-        """
-        Spin-wait until the in-flight request for the CURRENT generation finishes
-        or *timeout* seconds elapse. Call via asyncio.to_thread().
-        """
+        """Spin-wait until all in-flight requests finish or timeout elapses."""
         t0 = time.time()
-        while self._pending and (time.time() - t0) < timeout:
+        while self._in_flight > 0 and (time.time() - t0) < timeout:
             time.sleep(0.05)
 
     # ── Frame feed ────────────────────────────────────────────────────────────
@@ -182,19 +167,18 @@ class SeizureClassifier:
 
         if self.mode == "KAGGLE" and self.kaggle_url:
             gen = self._generation
-            if not self._pending:
-                self._pending = True
+            with self._infer_lock:
+                can_fire = self._in_flight < MAX_CONCURRENT
+                if can_fire:
+                    self._in_flight += 1
+
+            if can_fire:
                 t = threading.Thread(
                     target=self._fire_kaggle_request,
                     args=(x.copy(), gen),
                     daemon=True
                 )
                 t.start()
-            else:
-                # Queue most-recent clip; background thread will pick it up
-                with self._infer_lock:
-                    self._queued_clip = x.copy()
-                    self._queued_gen  = gen
 
             with self._infer_lock:
                 seizure_prob = self._last_seizure_prob
