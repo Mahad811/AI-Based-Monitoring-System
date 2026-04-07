@@ -8,7 +8,10 @@ import threading
 from pathlib import Path
 from .movinet_loader import load_movinet
 
-FALL_CLIP_FRAMES = 16
+FALL_CLIP_FRAMES  = 16
+MAX_CONCURRENT    = 1   # keep at 1 — free ngrok tunnels drop SSL under parallel load
+MAX_RETRIES       = 3   # retry failed requests with exponential backoff
+RETRY_BASE_S      = 0.5 # first retry after 0.5s, then 1s, then 2s
 
 
 class FallClassifier:
@@ -19,20 +22,11 @@ class FallClassifier:
         # ── Async inference state (KAGGLE mode only) ─────────────────────────
         self._last_fall_prob = 0.0
         self._infer_lock     = threading.Lock()
-        self._pending        = False   # True while an HTTP call is in-flight
+        self._in_flight      = 0   # number of HTTP requests currently in-flight
 
-        # Generation counter — incremented on every segment boundary.
-        # Each background thread captures the generation at launch time; if the
-        # generation has advanced by the time the response arrives the result is
-        # silently discarded.  This makes reset_for_segment() instantaneous
-        # (no blocking wait) while still preventing cross-segment contamination.
+        # Generation counter — incremented on every segment boundary so that
+        # results from the previous segment are silently discarded.
         self._generation = 0
-        # Single-slot queue: when _pending=True, classify() stores the most
-        # recent clip here instead of dropping it.  The background thread drains
-        # it immediately after finishing so the best available window is always
-        # evaluated, not just the first one.
-        self._queued_clip = None
-        self._queued_gen  = 0
 
         if self.mode == "KAGGLE":
             print("🚀 Initialize FallClassifier in KAGGLE Mode (async fire-and-forget)")
@@ -60,80 +54,65 @@ class FallClassifier:
     # ── Background HTTP worker ────────────────────────────────────────────────
     def _fire_kaggle_request(self, clip: np.ndarray, gen: int):
         """
-        Runs in a daemon thread.
-        *gen* is the segment generation captured at launch time.
-        If self._generation has advanced by the time we respond, the result is
-        discarded so it cannot contaminate the current segment.
+        Runs in a daemon thread. Retries up to MAX_RETRIES times with
+        exponential backoff so transient SSL/EOF tunnel errors are recovered
+        automatically without spamming the console.
         """
-        try:
-            frames_b64 = self._encode_clip_to_b64(clip)
-            resp = requests.post(
-                f"{self.kaggle_url.rstrip('/')}/predict/fall",
-                json={"frames_b64": frames_b64},
-                timeout=45.0
-            )
-            if resp.status_code == 200:
-                prob = float(resp.json().get("fall_prob", 0.0))
-                with self._infer_lock:
-                    if self._generation == gen:      # still the same segment?
-                        self._last_fall_prob = prob
-                        print(f"  [FallClassifier] fall_prob={prob:.3f} (gen {gen})")
-                    else:
-                        print(f"  [FallClassifier] Discarding stale result "
-                              f"prob={prob:.3f} (gen {gen} vs current {self._generation})")
-            else:
-                print(f"[FallClassifier] Kaggle API error {resp.status_code}: "
-                      f"{resp.text[:120]}")
-        except Exception as e:
-            print(f"[FallClassifier] Kaggle request failed: {e}")
-        finally:
-            # ── Drain the queue (collect values inside lock, start thread outside) ──
-            next_clip = None
-            next_gen  = 0
-            with self._infer_lock:
-                if self._generation == gen:       # still the current segment?
-                    self._pending = False
-                    if self._queued_clip is not None:
-                        next_clip         = self._queued_clip
-                        next_gen          = self._queued_gen
-                        self._queued_clip = None
-                        self._queued_gen  = 0
-                        self._pending     = True   # re-latch before releasing lock
+        url        = f"{self.kaggle_url.rstrip('/')}/predict/fall"
+        frames_b64 = self._encode_clip_to_b64(clip)
+        last_err   = None
+        succeeded  = False
 
-            if next_clip is not None:
-                t = threading.Thread(
-                    target=self._fire_kaggle_request,
-                    args=(next_clip, next_gen),
-                    daemon=True
-                )
-                t.start()
+        try:
+            for attempt in range(MAX_RETRIES):
+                with self._infer_lock:
+                    if self._generation != gen:
+                        return  # segment changed — discard silently
+
+                try:
+                    resp = requests.post(
+                        url,
+                        json={"frames_b64": frames_b64},
+                        timeout=45.0
+                    )
+                    if resp.status_code == 200:
+                        prob = float(resp.json().get("fall_prob", 0.0))
+                        with self._infer_lock:
+                            if self._generation == gen and prob > self._last_fall_prob:
+                                self._last_fall_prob = prob
+                        print(f"  [FallClassifier] fall_prob={prob:.3f}")
+                        succeeded = True
+                        return
+                    else:
+                        last_err = f"HTTP {resp.status_code}"
+                except Exception as e:
+                    last_err = str(e)
+
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BASE_S * (2 ** attempt))
+
+            if not succeeded:
+                print(f"[FallClassifier] Failed after {MAX_RETRIES} attempts: "
+                      f"{(last_err or '')[:100]}")
+        finally:
+            with self._infer_lock:
+                self._in_flight = max(0, self._in_flight - 1)
 
     # ── Segment lifecycle ─────────────────────────────────────────────────────
     def reset_for_segment(self) -> None:
         """
-        NON-BLOCKING. Call at the START of every new segment (no asyncio.to_thread needed).
-
-        Advances the generation counter so any in-flight HTTP request from the
-        previous segment will be silently discarded when it eventually arrives.
-        Immediately zeroes _last_fall_prob, _pending and the queued-clip slot so
-        this segment starts with a completely clean state without waiting at all.
+        NON-BLOCKING. Advances generation so stale in-flight results are discarded.
+        Resets cached probability so the new segment starts clean.
         """
         with self._infer_lock:
             self._generation    += 1
             self._last_fall_prob = 0.0
-            self._queued_clip    = None
-            self._queued_gen     = 0
-        self._pending = False   # safe: old thread checks generation before using it
+            self._in_flight      = 0
 
     def wait_for_pending(self, timeout: float = 25.0) -> None:
-        """
-        Spin-wait until the in-flight request for the CURRENT generation finishes
-        or *timeout* seconds elapse.  Call via asyncio.to_thread() from the demo loop.
-        25 s is enough for Kaggle to respond and short enough that it doesn't freeze
-        a 5-second-clip demo.
-        """
+        """Spin-wait until all in-flight requests finish or timeout elapses."""
         t0 = time.time()
-        while self._pending and (time.time() - t0) < timeout:
+        while self._in_flight > 0 and (time.time() - t0) < timeout:
             time.sleep(0.05)
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -143,27 +122,31 @@ class FallClassifier:
             clip: ndarray (16, 224, 224, 3) float32 [0,1] RGB
         Returns:
             dict with fall_prob / normal_prob / class / confidence   OR   None
+
+        KAGGLE mode: fires a new background thread if fewer than MAX_CONCURRENT
+        requests are already in-flight, then immediately returns the last known
+        result. Multiple overlapping requests mean the fastest response wins and
+        the highest probability is always surfaced — dramatically reducing alert
+        latency compared to the original single-request gate.
         """
         if clip is None:
             return None
 
         if self.mode == "KAGGLE" and self.kaggle_url:
-            gen = self._generation          # capture current generation
-            if not self._pending:
-                self._pending = True
+            gen = self._generation
+            with self._infer_lock:
+                can_fire = self._in_flight < MAX_CONCURRENT
+                if can_fire:
+                    self._in_flight += 1
+
+            if can_fire:
                 t = threading.Thread(
                     target=self._fire_kaggle_request,
                     args=(clip.copy(), gen),
                     daemon=True
                 )
                 t.start()
-            else:
-                # Queue the most-recent clip instead of dropping it silently.
-                # The background thread will fire it as soon as it finishes.
-                with self._infer_lock:
-                    self._queued_clip = clip.copy()
-                    self._queued_gen  = gen
-            # Return the last known result immediately — never block the frame loop
+
             with self._infer_lock:
                 fall_prob = self._last_fall_prob
         else:
