@@ -28,7 +28,7 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 # ── Model ──────────────────────────────────────────────────────────────────────
-MODEL = "gemini-3-flash-preview"
+MODEL = "gemini-3.1-flash-lite-preview"
 
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
@@ -42,17 +42,28 @@ _TIER2_SYSTEM = (
 
 _TIER2_PROMPT = """\
 Alert audit.
-Patient: {patient_id}
-Event  : {event_type} — ML model confidence {confidence:.0%}
+Patient  : {patient_id}
+Event    : {event_type}
+ML model confidence: {confidence:.0%}
+Frames reviewed: {n_frames} (spanning ~2s around trigger)
 
-You are reviewing {n_frames} frames spanning ~2 seconds around the trigger.
+IMPORTANT CONTEXT: This alert was raised by a deep learning model (MoViNet-A2) \
+trained specifically on ICU patient footage. At {confidence:.0%} confidence, \
+the model is highly likely to be correct. Your role is NOT to second-guess the \
+ML model but to catch obvious false positives only.
 
-Answer ONE question: is this alert clinically real or a false positive?
+DEFAULT to CONFIRMED unless you can clearly and unambiguously identify that \
+the scene shows normal, safe patient behaviour with absolutely NO indication \
+of {event_type}.
 
-Consider ONLY:
-- Is body position consistent with {event_type}?
-- Does the motion match {event_type} biomechanics?
-- Is there an obvious benign explanation?
+SUPPRESS only if: the patient is clearly in a completely stable, safe resting \
+position with zero motion consistent with {event_type}, AND there is an \
+obvious innocent explanation for the ML trigger (e.g. a nurse adjusting bedding, \
+deliberate repositioning with full motor control).
+
+Do NOT suppress based on uncertainty or because still frames lack motion context. \
+The ML model processed the full temporal video signal — trust it unless the visual \
+evidence is clearly contrary.
 
 JSON output (no other text):
 {{"decision": "CONFIRMED" or "SUPPRESSED", "reason": "one sentence max"}}
