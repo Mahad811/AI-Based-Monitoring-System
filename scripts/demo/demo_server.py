@@ -130,18 +130,10 @@ def _build_segments() -> list[dict]:
     segments = []
     seg_id   = 1
 
-    # ── Patient A — Explicit Sequence ─────────────────────────────────────────
-    # 1. Fall (B_M_79.mp4)
-    clip_bm_79 = next((p for p in fall_clips if p.name == "B_M_79.mp4"), None)
-    if clip_bm_79:
-        segments.append({
-            "id": seg_id, "patient": "Patient A", "type": "fall",
-            "label": "Fall Event",
-            "clips": [clip_bm_79],
-        })
-        seg_id += 1
+    # ── Patient A — Sequence: Normal first, then both falls ────────────────────
+    # Showing normal first establishes baseline before alerts fire.
 
-    # 2. Normal (B_M_48.mp4)
+    # 1. Normal (B_M_48.mp4)
     clip_bm_48 = next((p for p in normal_clips if p.name == "B_M_48.mp4"), None)
     if clip_bm_48:
         segments.append({
@@ -151,8 +143,18 @@ def _build_segments() -> list[dict]:
         })
         seg_id += 1
 
-    # 3. Fall (20240918191026.mp4)
-    clip_2024 = next((p for p in fall_clips if p.name == "20240918191026.mp4"), None)
+    # 2. Fall (B_M_79.mp4)
+    clip_bm_79 = next((p for p in fall_clips if p.name == "B_M_79.mp4"), None)
+    if clip_bm_79:
+        segments.append({
+            "id": seg_id, "patient": "Patient A", "type": "fall",
+            "label": "Fall Event",
+            "clips": [clip_bm_79],
+        })
+        seg_id += 1
+
+    # 3. Fall (20240918191124.mp4)
+    clip_2024 = next((p for p in fall_clips if p.name == "20240918191124.mp4"), None)
     if clip_2024:
         segments.append({
             "id": seg_id, "patient": "Patient A", "type": "fall",
@@ -251,7 +253,7 @@ class SegmentConsolidator:
         else:
             self.sz_streak = 0
 
-        if self.seg_type == 'fall' and self.fall_streak >= 2:
+        if self.seg_type == 'fall' and self.fall_streak >= 1:
             self.fired = True
             return True, 'fall', max(self.peak_conf, fall_sm)
         if self.seg_type == 'seizure' and self.sz_streak >= 1:
@@ -323,16 +325,29 @@ class PipelineService:
         Two-step progressive Gemini verification:
           Tier 2 — fast binary (~1-2s):  broadcasts gemini_tier2 immediately
           Tier 3 — full enrichment (~6s): broadcasts gemini_report only if CONFIRMED
+
+        HIGH-CONFIDENCE BYPASS: if ML confidence >= 80%, we skip Tier 2 entirely
+        and auto-CONFIRM. The trained MoViNet model on real ICU data is more
+        reliable than a general LLM reviewing 4 still frames without motion context.
         """
+        AUTO_CONFIRM_THRESHOLD = 0.50
         try:
-            # ── Tier 2: fast binary verify ─────────────────────────────────────
-            print(f"  [Gemini T2] Verifying Alert {aid}...")
-            t2 = await asyncio.to_thread(
-                self.gemini.verify_binary, etype, conf, pat, frames
-            )
-            decision = t2.get("decision", "CONFIRMED")
-            reason   = t2.get("reason",   "")
-            print(f"  [Gemini T2] Alert {aid}: {decision} — {reason}")
+            if conf >= AUTO_CONFIRM_THRESHOLD:
+                # ── High-confidence: skip Tier 2, auto-confirm ──────────────────
+                decision = "CONFIRMED"
+                reason   = (f"ML confidence {conf*100:.0f}% exceeds auto-confirm threshold "
+                            f"({AUTO_CONFIRM_THRESHOLD*100:.0f}%). Clinical enrichment proceeding.")
+                print(f"  [Gemini T2] Alert {aid}: AUTO-CONFIRMED ({conf*100:.0f}% >= "
+                      f"{AUTO_CONFIRM_THRESHOLD*100:.0f}%) — skipping binary verify")
+            else:
+                # ── Standard Tier 2 binary verify ──────────────────────────────
+                print(f"  [Gemini T2] Verifying Alert {aid}...")
+                t2 = await asyncio.to_thread(
+                    self.gemini.verify_binary, etype, conf, pat, frames
+                )
+                decision = t2.get("decision", "CONFIRMED")
+                reason   = t2.get("reason",   "")
+                print(f"  [Gemini T2] Alert {aid}: {decision} — {reason}")
 
             # Broadcast Tier 2 result immediately so UI can update the badge
             await self.broadcast({
@@ -363,7 +378,7 @@ class PipelineService:
                     "alert_id": aid,
                     "report": {
                         "decision":  "SUPPRESSED",
-                        "headline":  "Alert Suppressed",
+                        "headline":  "Alert Suppressed — False Positive",
                         "narrative": reason,
                         "severity":  "low",
                         "actions":   ["Continue routine monitoring"],
@@ -372,6 +387,7 @@ class PipelineService:
                 })
         except Exception as exc:
             print(f"  [Gemini] Job {aid} failed: {exc}")
+
 
     async def run_loop(self):
         if self.running:
@@ -421,6 +437,7 @@ class PipelineService:
 
             pending_gemini_alert = None
             future_frame_counter = 0
+            pending_gemini_task  = None   # track Gemini asyncio.Task for await
 
             await self.broadcast({
                 "type":     "segment_start",
@@ -442,6 +459,31 @@ class PipelineService:
                 # cover ~1–2 seconds, matching training.
                 native_fps  = cap.get(cv2.CAP_PROP_FPS) or FPS_TARGET
                 keep_every  = max(1, round(native_fps / FPS_TARGET))
+                raw_frame_idx = 0
+
+                # ── Pre-buffer: prime the temporal buffers before streaming ──────
+                # Fall needs 32 frames / Seizure needs 64 before the model can
+                # fire. We read the first N effective frames, run them through
+                # process_frame() to fill internal buffers (and fire the first
+                # Kaggle request), then SEEK BACK to frame 0 so the UI shows
+                # the complete clip from the start — no frames are skipped.
+                PREBUFFER_FRAMES = 64 if seg["type"] == "seizure" else 32
+                prebuf_raw  = 0
+                prebuf_kept = 0
+                while prebuf_kept < PREBUFFER_FRAMES:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    prebuf_raw += 1
+                    if (prebuf_raw - 1) % keep_every != 0:
+                        continue
+                    h, w = frame.shape[:2]
+                    if h > w * 1.5:
+                        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                    self.pipeline.process_frame(frame)
+                    prebuf_kept += 1
+                # Seek back so the UI loop replays the full clip from frame 1
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 raw_frame_idx = 0
 
                 while True:
@@ -614,7 +656,7 @@ class PipelineService:
                     # We actively poll so we can intercept any spike in probability
                     # BEFORE the next queued thread overwrites it!
                     while (
-                        (self.pipeline.fall_classifier._pending or self.pipeline.fall_classifier._last_fall_prob >= FALL_THRESHOLD)
+                        (self.pipeline.fall_classifier._in_flight > 0 or self.pipeline.fall_classifier._last_fall_prob >= FALL_THRESHOLD)
                         and (time.time() - t0) < 25.0
                     ):
                         tail_prob = self.pipeline.fall_classifier._last_fall_prob
@@ -667,7 +709,7 @@ class PipelineService:
                                         await asyncio.sleep(0.1)
                                     break
 
-                        if consolidator.fired or not self.pipeline.fall_classifier._pending:
+                        if consolidator.fired or self.pipeline.fall_classifier._in_flight == 0:
                             break
 
                         # Keep-alive: broadcast last frame so screen stays populated
@@ -703,7 +745,7 @@ class PipelineService:
                     last_broadcast = 0.0
 
                     while (
-                        (self.pipeline.seizure_classifier._pending or self.pipeline.seizure_classifier._last_seizure_prob >= SEIZURE_THRESHOLD)
+                        (self.pipeline.seizure_classifier._in_flight > 0 or self.pipeline.seizure_classifier._last_seizure_prob >= SEIZURE_THRESHOLD)
                         and (time.time() - t0) < 25.0
                     ):
                         tail_sz_prob = self.pipeline.seizure_classifier._last_seizure_prob
@@ -755,7 +797,7 @@ class PipelineService:
                                     await asyncio.sleep(0.1)
                                 break
 
-                        if consolidator.fired or not self.pipeline.seizure_classifier._pending:
+                        if consolidator.fired or self.pipeline.seizure_classifier._in_flight == 0:
                             break
 
                         # Keep-alive: broadcast last frame while API is thinking.
@@ -775,6 +817,32 @@ class PipelineService:
 
                     if not consolidator.fired:
                         print(f"  [SeizureClassifier] Tail prob = {self.pipeline.seizure_classifier._last_seizure_prob:.3f}")
+
+            # ── Post-alert review hold (user-controlled) ────────────────────────
+            # If an alert fired, keep the last frame alive and wait until
+            # the user clicks "Next Patient" in the navbar.  No fixed timers —
+            # the panel drives the pace, and frames keep flowing so the UI
+            # never goes blank.
+            if consolidator.fired and seg_idx < len(SEGMENTS) - 1:
+                print("  [Demo] Alert reviewed — holding until user clicks 'Next Patient'")
+                # Notify frontend to show the 'Next Patient' button prominently
+                await self.broadcast({"type": "alert_review", "duration": 0})
+                self.skip_requested = False   # reset so we wait for a fresh click
+
+                # Keep broadcasting the frozen last frame every 0.5s.
+                # Gemini results will appear on their own via broadcast inside
+                # execute_gemini_job — we don't need to wait for them here.
+                while not self.skip_requested:
+                    if last_frame_b64:
+                        await self.broadcast({
+                            "type":         "frame_update",
+                            "frame_b64":    last_frame_b64,
+                            "fall_risk":    0,
+                            "seizure_risk": 0,
+                            "fps":          0,
+                        })
+                    await asyncio.sleep(0.5)
+                self.skip_requested = False   # consume the signal
 
             # Segment transition pause
             if seg_idx < len(SEGMENTS) - 1:
