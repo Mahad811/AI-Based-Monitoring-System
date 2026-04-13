@@ -1,88 +1,1466 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vital Guardian — AI-Powered ICU Monitor</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Guardian — AI-Powered ICU Monitoring System</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ─── RESET ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+
+/* ─── BODY ─── */
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0d1117;
+  background-image: radial-gradient(rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: 26px 26px;
+  color: #e2e8f0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ════════════ NAVBAR ════════════ */
+#navbar {
+  height: 52px; min-height: 52px; flex-shrink: 0;
+  background: rgba(13,17,23,0.97);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px; z-index: 50;
+  backdrop-filter: blur(8px);
+}
+
+.logo-area { display: flex; align-items: center; gap: 10px; }
+.pdot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #34d399; box-shadow: 0 0 8px #34d399;
+  animation: pglow 2s infinite alternate; flex-shrink: 0;
+}
+@keyframes pglow { from { box-shadow: 0 0 5px #34d399; } to { box-shadow: 0 0 14px #34d399; } }
+.logo-txt { line-height: 1.2; }
+
+/* #22 — Shimmer brand text */
+@keyframes shimmer { 0%{background-position:200% center} 100%{background-position:-200% center} }
+.logo-brand {
+  font-size: 0.88rem; font-weight: 800; letter-spacing: 2px; display: block;
+  background: linear-gradient(90deg, #dca54c 0%, #ffe0a0 35%, #dca54c 55%, #a0650a 80%, #dca54c 100%);
+  background-size: 250% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+.logo-sub { font-size: 0.62rem; color: #4b5a72; display: block; }
+
+.nav-stats {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 5px 14px;
+}
+.nst { text-align: center; }
+.nst-lbl { display: block; font-size: 0.56rem; color: #4b5a72; letter-spacing: 0.8px; font-weight: 600; }
+.nst-val { display: block; font-size: 0.8rem; font-weight: 700; color: #e2e8f0; }
+.nst-val.gold { color: #dca54c; }
+.nsep { width: 1px; height: 22px; background: rgba(255,255,255,0.08); }
+
+/* #21 — Frame counter in nav */
+.nav-frames {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; padding: 3px 9px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: #4b5a72;
+}
+.nav-frames span { color: #8b9ab7; }
+
+.nav-right { display: flex; align-items: center; gap: 7px; }
+.fps-wrap {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; padding: 3px 9px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+}
+.fps-g { color: #34d399; } .fps-a { color: #f59e0b; } .fps-r { color: #ef4444; }
+.live-pill {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.22);
+  border-radius: 6px; padding: 3px 9px;
+  font-size: 0.66rem; font-weight: 700; color: #fc6b6b; letter-spacing: 0.5px;
+}
+.lb { width: 5px; height: 5px; border-radius: 50%; background: #ef4444; animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.1;} }
+
+/* #20 — Nav clock */
+.nav-clock {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; padding: 3px 10px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #8b9ab7;
+}
+
+.btn-ui {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; padding: 4px 11px; font-size: 0.75rem; font-weight: 600;
+  color: #8b9ab7; cursor: pointer; font-family: 'Inter', sans-serif;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-ui:hover { background: rgba(255,255,255,0.11); color: #e2e8f0; }
+.btn-primary { background: #34d399 !important; color: #000 !important; border: none !important; }
+.btn-primary:hover { background: #2ecc95 !important; }
+
+/* ════════════ MAIN DASHBOARD ════════════ */
+#dash { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+/* ════════════ VIDEO SECTION ════════════ */
+#vid-section {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 10px; gap: 8px; overflow: hidden;
+}
+
+/* #19 — Crosshair cursor on video */
+#vid-box {
+  flex: 1; min-height: 0;
+  background: #000; border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,0.09);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.45s, box-shadow 0.45s;
+  cursor: crosshair;
+}
+
+/* #7 — Glow pulse on alert */
+@keyframes glow-fall {
+  0%,100%{ border-color: rgba(245,158,11,0.4); box-shadow: 0 0 12px rgba(245,158,11,0.08); }
+  50%    { border-color: rgba(245,158,11,0.8); box-shadow: 0 0 32px rgba(245,158,11,0.3); }
+}
+@keyframes glow-seizure {
+  0%,100%{ border-color: rgba(239,68,68,0.4); box-shadow: 0 0 12px rgba(239,68,68,0.10); }
+  50%    { border-color: rgba(239,68,68,0.9); box-shadow: 0 0 40px rgba(239,68,68,0.35); }
+}
+#vid-box.af { animation: glow-fall    1.8s ease-in-out infinite; }
+#vid-box.as { animation: glow-seizure 1.1s ease-in-out infinite; }
+
+#vstream { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+
+.vcorn {
+  position: absolute; display: flex; align-items: center; gap: 5px;
+  font-size: 0.66rem; font-weight: 600;
+  font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.78);
+  background: rgba(0,0,0,0.58); padding: 3px 8px; border-radius: 4px;
+  pointer-events: none;
+}
+.vcorn.tl { top: 10px; left: 10px; }
+.vcorn.tr { top: 10px; right: 10px; }
+.vcorn.bl { bottom: 10px; left: 10px; }
+.adot { width: 5px; height: 5px; border-radius: 50%; background: #f59e0b; animation: blink 0.8s infinite; }
+
+/* Transition overlay */
+#trn-overlay {
+  position: absolute; inset: 0;
+  background: rgba(8,11,18,0.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  z-index: 20; transition: opacity 0.5s;
+}
+#trn-overlay.hide { opacity: 0; pointer-events: none; }
+.spin {
+  width: 32px; height: 32px;
+  border: 2px solid rgba(255,255,255,0.07);
+  border-radius: 50%; border-top-color: #dca54c;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#trn-overlay h2 { font-size: 1rem; font-weight: 700; }
+#trn-overlay p  { font-size: 0.78rem; color: #8b9ab7; }
+
+/* #17 — Patient nameplate */
+#pat-nameplate {
+  position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+  background: rgba(8,11,18,0.88);
+  border: 1px solid rgba(220,165,76,0.38);
+  border-radius: 10px; padding: 10px 24px;
+  text-align: center; z-index: 12;
+  opacity: 0; transition: opacity 0.5s ease;
+  pointer-events: none; white-space: nowrap;
+}
+#pat-nameplate.show { opacity: 1; }
+.pnp-label { font-size: 0.56rem; color: #4b5a72; letter-spacing: 1.5px; font-weight: 700; display: block; margin-bottom: 2px; }
+.pnp-name  { font-size: 0.96rem; font-weight: 800; color: #dca54c; display: block; }
+.pnp-room  { font-size: 0.68rem; color: #8b9ab7; display: block; margin-top: 2px; }
+
+/* #16 — Session stats overlay */
+#stats-overlay {
+  position: absolute; inset: 0;
+  background: rgba(8,11,18,0.94);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  z-index: 30;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+#stats-overlay.show { opacity: 1; pointer-events: all; }
+.stats-box {
+  background: #161b22;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px; padding: 28px 36px; text-align: center; min-width: 340px;
+}
+.stats-title { font-size: 1.1rem; font-weight: 800; color: #dca54c; margin-bottom: 4px; }
+.stats-sub   { font-size: 0.75rem; color: #4b5a72; margin-bottom: 20px; }
+.stats-grid  { display: flex; gap: 16px; justify-content: center; margin-bottom: 18px; }
+.stat-item   { text-align: center; }
+.stat-num    { font-size: 2rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+.stat-num.green { color: #34d399; }
+.stat-num.amber { color: #f59e0b; }
+.stat-num.red   { color: #ef4444; }
+.stat-lbl  { font-size: 0.6rem; color: #4b5a72; letter-spacing: 0.8px; font-weight: 700; margin-top: 2px; }
+.stat-sep  { width: 1px; background: rgba(255,255,255,0.08); }
+.stats-time  { font-size: 0.7rem; color: #4b5a72; font-family: 'JetBrains Mono'; }
+
+/* ── #alert review overlay ── */
+#review-overlay {
+  position: absolute; inset: 0;
+  background: rgba(8,11,18,0.88);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  z-index: 22;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.6s ease;
+  cursor: pointer;
+}
+#review-overlay.show { opacity: 1; pointer-events: all; }
+.rv-icon { font-size: 2.2rem; }
+.rv-title {
+  font-size: 1.05rem; font-weight: 800; color: #34d399; letter-spacing: 0.5px;
+  text-shadow: 0 0 16px rgba(52,211,153,0.4);
+}
+.rv-sub { font-size: 0.78rem; color: #8b9ab7; }
+.rv-bar-wrap {
+  width: 260px; height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px; overflow: hidden;
+}
+.rv-bar {
+  height: 100%; background: linear-gradient(90deg, #34d399, #a855f7);
+  border-radius: 4px;
+  transition: width 0.95s linear;
+}
+.rv-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem; color: #4b5a72;
+}
+.rv-hint { font-size: 0.66rem; color: #4b5a72; font-style: italic; }
+/* Next Patient button in review overlay */
+@keyframes rv-pulse { 0%,100%{box-shadow:0 0 0 rgba(52,211,153,0)} 50%{box-shadow:0 0 22px rgba(52,211,153,0.55)} }
+.rv-next-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #34d399; color: #000;
+  border: none; border-radius: 8px;
+  padding: 10px 28px; font-size: 0.88rem; font-weight: 800;
+  font-family: 'Inter', sans-serif; cursor: pointer; letter-spacing: 0.3px;
+  animation: rv-pulse 1.6s ease-in-out infinite;
+  transition: background 0.2s, transform 0.15s;
+}
+.rv-next-btn:hover { background: #2ecc95; transform: scale(1.04); }
+#ctrl-overlay {
+  position: absolute; inset: 0;
+  background: rgba(8,11,18,0.8);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 25; transition: opacity 0.3s;
+}
+#ctrl-overlay.hide { opacity: 0; pointer-events: none; }
+.ctrl-box {
+  background: #161b22; border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 22px 26px; text-align: center; max-width: 310px;
+}
+.ctrl-ico { font-size: 1.8rem; margin-bottom: 8px; }
+.ctrl-box h3 { color: #dca54c; font-size: 0.95rem; margin-bottom: 5px; }
+.ctrl-box p  { color: #8b9ab7; font-size: 0.78rem; line-height: 1.5; margin-bottom: 16px; }
+.btn-row { display: flex; gap: 8px; justify-content: center; }
+
+/* Segment bar */
+#seg-bar {
+  flex-shrink: 0; height: 38px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #161b22; border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 0 13px;
+}
+.seg-l { display: flex; align-items: center; gap: 8px; }
+.seg-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 600;
+  color: #4b5a72; background: rgba(0,0,0,0.3);
+  padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.07);
+}
+.seg-title { font-size: 0.86rem; font-weight: 500; }
+.seg-pill {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.8px;
+  padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+  background: rgba(52,211,153,0.1); color: #34d399; border: 1px solid rgba(52,211,153,0.22);
+  transition: all 0.4s;
+}
+.seg-pill.fall    { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.28); }
+.seg-pill.seizure { background: rgba(239,68,68,0.1);  color: #ef4444; border-color: rgba(239,68,68,0.28); }
+
+/* ════════════ SIDEBAR ════════════ */
+#sidebar {
+  width: 430px; min-height: 0; flex-shrink: 0;
+  background: #0d1117; border-left: 1px solid rgba(255,255,255,0.08);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 9px; gap: 9px;
+}
+#sidebar::-webkit-scrollbar { width: 3px; }
+#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* #5 — Sidebar shake */
+@keyframes sidebar-shake {
+  0%,100%{ transform: translateX(0); }
+  15%    { transform: translateX(-5px); }
+  35%    { transform: translateX(5px); }
+  55%    { transform: translateX(-3px); }
+  75%    { transform: translateX(3px); }
+}
+#sidebar.shaking { animation: sidebar-shake 0.35s ease; }
+
+/* Patient Card */
+#pat-card {
+  flex-shrink: 0; background: #161b22;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px; padding: 10px;
+}
+
+.ph { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+
+/* #9 — Avatar color coding */
+.p-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #dca54c 0%, #a0650a 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.95rem; font-weight: 800; color: #000;
+  flex-shrink: 0; transition: background 0.5s ease, box-shadow 0.5s ease;
+}
+.p-avatar.av-fall    { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 0 12px rgba(245,158,11,0.35); }
+.p-avatar.av-seizure { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 0 12px rgba(239,68,68,0.35); }
+.p-avatar.av-normal  { background: linear-gradient(135deg, #dca54c 0%, #a0650a 100%); box-shadow: none; }
+
+.p-info { flex: 1; min-width: 0; }
+.p-name { font-size: 0.88rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-room { font-size: 0.63rem; color: #4b5a72; font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
+
+/* #12 — Status badge smooth morph */
+.p-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.4px;
+  padding: 3px 9px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  background: rgba(52,211,153,0.1); color: #34d399; border: 1px solid rgba(52,211,153,0.2);
+  transition: background 0.4s, color 0.4s, border-color 0.4s, box-shadow 0.4s, transform 0.15s;
+}
+.p-badge.pf { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.28); }
+.p-badge.ps { background: rgba(239,68,68,0.1);  color: #ef4444; border-color: rgba(239,68,68,0.28); }
+.p-badge.pa { animation: badge-glow 1s infinite alternate; }
+@keyframes badge-glow { to { box-shadow: 0 0 10px currentColor; } }
+/* Bounce on status change */
+@keyframes badge-bounce { 0%{transform:scale(1)} 40%{transform:scale(1.18)} 70%{transform:scale(0.94)} 100%{transform:scale(1)} }
+.p-badge.bouncing { animation: badge-bounce 0.35s ease, badge-glow 1s infinite alternate; }
+.bdot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* Vitals */
+.vitals { display: flex; flex-direction: row; gap: 5px; }
+.vbox {
+  flex: 1; min-width: 0;
+  background: rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 7px; padding: 6px 3px; text-align: center;
+}
+/* #2 — Heartbeat icon */
+.vi { font-size: 0.72rem; line-height: 1; display: block; }
+.vi.hb { display: inline-block; transform-origin: center; transition: transform 0.12s cubic-bezier(.36,.07,.19,.97); }
+.vv { font-size: 0.8rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; line-height: 1.25; display: block; transition: color 0.3s; }
+.vv.hr{ color: #fc6b6b; }
+.vu { font-size: 0.52rem; color: #4b5a72; display: block; }
+.vl { font-size: 0.46rem; color: #4b5a72; letter-spacing: 0.3px; font-weight: 600; margin-top: 1px; display: block; }
+
+/* Gauges Row */
+#gauges { flex-shrink: 0; display: flex; gap: 9px; }
+.g-card {
+  flex: 1; background: #161b22;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px; padding: 9px 8px;
+  text-align: center; display: flex; flex-direction: column; align-items: center;
+}
+.g-lbl { font-size: 0.56rem; font-weight: 700; letter-spacing: 0.8px; color: #4b5a72; margin-bottom: 5px; display: block; }
+.g-wrap { position: relative; width: 88px; height: 88px; margin: 0 auto 5px; }
+.g-svg { width: 88px; height: 88px; transform: rotate(-90deg); display: block; }
+.g-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 10; }
+/* #1 — Smooth arc transitions */
+.g-arc { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.18s linear, stroke 0.6s ease; }
+.g-arc.fa { stroke: #f59e0b; }
+.g-arc.fa.hot { filter: drop-shadow(0 0 6px rgba(249,115,22,0.7)); }
+.g-arc.sa { stroke: #a855f7; }
+.g-arc.sa.hot { filter: drop-shadow(0 0 6px rgba(239,68,68,0.7)); }
+
+.g-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.g-pct { font-size: 1.1rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; line-height: 1; transition: color 0.4s; }
+.g-sub { font-size: 0.46rem; font-weight: 700; color: #4b5a72; letter-spacing: 0.8px; margin-top: 2px; }
+.g-thr { font-size: 0.56rem; color: #4b5a72; }
+
+/* Gemini Decision Card */
+#gem-card {
+  flex-shrink: 0; background: #161b22;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px; padding: 10px;
+  transition: border-color 0.4s, background 0.4s, box-shadow 0.4s;
+}
+#gem-card.gc { border-color: rgba(52,211,153,0.38); background: rgba(22,27,34,0.99); box-shadow: 0 0 14px rgba(52,211,153,0.06); }
+#gem-card.gs { border-color: rgba(245,158,11,0.28); }
+
+.gem-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.gem-logo { display: flex; align-items: center; gap: 6px; }
+.gem-star { font-size: 0.88rem; color: #a855f7; animation: gstar 3s infinite alternate; }
+@keyframes gstar { from { filter: drop-shadow(0 0 3px #a855f7); } to { filter: drop-shadow(0 0 9px #c084fc); } }
+.gem-name { font-size: 0.61rem; font-weight: 800; letter-spacing: 1.5px; color: #a855f7; }
+.gem-hdr-right { display: flex; align-items: center; gap: 6px; }
+.gem-tag {
+  font-size: 0.54rem; color: #4b5a72; font-family: 'JetBrains Mono', monospace;
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.07);
+}
+/* #15 — Gemini verify time */
+#gem-time {
+  font-size: 0.56rem; color: #34d399; font-family: 'JetBrains Mono', monospace;
+  padding: 1px 6px; background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.2); border-radius: 4px;
+  opacity: 0; transition: opacity 0.3s;
+}
+#gem-time.show { opacity: 1; }
+
+.gp { } .gp.hide { display: none !important; }
+.g-idle { font-size: 0.72rem; color: #4b5a72; text-align: center; padding: 8px 0; font-style: italic; }
+.g-think { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 0; }
+.tdots { display: flex; gap: 5px; }
+.td { width: 6px; height: 6px; border-radius: 50%; background: #a855f7; }
+.td:nth-child(1) { animation: tdrop 1.2s 0.0s infinite ease-in-out; }
+.td:nth-child(2) { animation: tdrop 1.2s 0.2s infinite ease-in-out; }
+.td:nth-child(3) { animation: tdrop 1.2s 0.4s infinite ease-in-out; }
+@keyframes tdrop { 0%,80%,100%{transform:scale(0.7);opacity:0.4;} 40%{transform:scale(1.3);opacity:1;} }
+.g-think-txt { font-size: 0.72rem; color: #a855f7; font-weight: 500; }
+
+.gv {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.73rem; font-weight: 800; letter-spacing: 0.4px;
+  padding: 4px 11px; border-radius: 20px; margin-bottom: 5px;
+}
+.gv.ok { background: rgba(52,211,153,0.1); color: #34d399; border: 1px solid rgba(52,211,153,0.28); }
+.gv.no { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.28); }
+
+.g-hl  { font-size: 0.82rem; font-weight: 700; margin-bottom: 4px; line-height: 1.3; }
+/* #6 — Typewriter narrative */
+.g-txt { font-size: 0.72rem; color: #8b9ab7; line-height: 1.45; margin-bottom: 5px; min-height: 1.45em; }
+.g-sev { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; margin-bottom: 5px; }
+.sl { color: #4b5a72; }
+.sv { font-weight: 700; text-transform: uppercase; }
+.sv.low { color: #34d399; } .sv.mod { color: #f59e0b; }
+.sv.hi  { color: #f97316; } .sv.crit{ color: #ef4444; }
+.g-acts { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.g-acts li {
+  display: flex; align-items: flex-start; gap: 5px;
+  font-size: 0.7rem; color: #e2e8f0;
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 5px; padding: 3px 7px; line-height: 1.35;
+}
+.g-acts li::before { content: "→"; color: #dca54c; font-weight: 700; flex-shrink: 0; }
+
+/* Alert Log */
+#alert-log { display: flex; flex-direction: column; flex: 1; min-height: 80px; }
+.log-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-shrink: 0; }
+.log-title { font-size: 0.58rem; font-weight: 800; letter-spacing: 1.2px; color: #4b5a72; }
+#alert-count {
+  font-size: 0.58rem; font-weight: 700; color: #4b5a72;
+  background: rgba(0,0,0,0.3); padding: 2px 7px;
+  border-radius: 10px; border: 1px solid rgba(255,255,255,0.07);
+}
+#log-feed {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
+}
+#log-feed::-webkit-scrollbar { width: 3px; }
+#log-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.log-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; color: #4b5a72; font-size: 0.78rem;
+  padding: 16px 0; text-align: center;
+}
+.ei { font-size: 1.4rem; } .es { font-size: 0.66rem; }
+
+.ac {
+  flex-shrink: 0; background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid #4b5a72;
+  border-radius: 0 7px 7px 0; padding: 8px;
+  animation: ain 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.4s, border-left-color 0.3s;
+}
+@keyframes ain { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+.ac.fall    { border-left-color: #f59e0b; }
+.ac.seizure { border-left-color: #ef4444; }
+.ac-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+.ac-type { font-size: 0.7rem; font-weight: 800; }
+.ac.fall .ac-type    { color: #f59e0b; }
+.ac.seizure .ac-type { color: #ef4444; }
+.ac-conf { font-size: 0.62rem; color: #4b5a72; font-family: 'JetBrains Mono', monospace; }
+.ac-r    { display: flex; align-items: center; gap: 5px; }
+.ac-time { font-size: 0.6rem; color: #4b5a72; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+.ac-x { background: none; border: none; color: #4b5a72; font-size: 0.85rem; cursor: pointer; padding: 0; line-height: 1; font-family: inherit; transition: color 0.2s; }
+.ac-x:hover { color: #e2e8f0; background: none; }
+.ac-gem { background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.18); border-radius: 5px; padding: 5px 7px; font-size: 0.68rem; }
+.ac-gem.thinking { display: flex; align-items: center; gap: 6px; color: #a855f7; border-style: dashed; }
+.mpulse { width: 4px; height: 4px; border-radius: 50%; background: #a855f7; flex-shrink: 0; animation: blink 0.8s infinite; }
+.mbadge { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 0.66rem; padding: 2px 7px; border-radius: 10px; margin-bottom: 3px; }
+.mbadge.ok { background: rgba(52,211,153,0.1); color: #34d399; }
+.mbadge.no { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.mtxt { color: #8b9ab7; line-height: 1.4; margin-top: 2px; font-size: 0.67rem; }
+
+</style>
 </head>
 <body>
-    <!-- Top Navigation Bar -->
-    <header class="navbar">
-        <div class="logo-container">
-            <div class="pulse-dot"></div>
-            <h1>VITAL GUARDIAN</h1>
-            <span class="subtitle">AI-Powered ICU Monitoring</span>
+
+<!-- ═══════════ NAVBAR ═══════════ -->
+<div id="navbar">
+
+  <div class="logo-area">
+    <div class="pdot"></div>
+    <div class="logo-txt">
+      <span class="logo-brand">VITAL GUARDIAN</span>
+      <span class="logo-sub">AI-Powered ICU Monitoring System</span>
+    </div>
+  </div>
+
+  <div class="nav-stats">
+    <div class="nst">
+      <span class="nst-lbl">PATIENTS</span>
+      <span class="nst-val" id="pat-count">3</span>
+    </div>
+    <div class="nsep"></div>
+    <div class="nst">
+      <span class="nst-lbl">ALERTS TODAY</span>
+      <span class="nst-val" id="alert-today">0</span>
+    </div>
+    <div class="nsep"></div>
+    <div class="nst">
+      <span class="nst-lbl">AI MODEL</span>
+      <span class="nst-val gold">MoViNet-A2</span>
+    </div>
+  </div>
+
+  <div class="nav-right">
+    <!-- #20 — Nav clock -->
+    <div class="nav-clock" id="nav-clock">--:--:--</div>
+    <!-- #21 — Frame counter -->
+    <div class="nav-frames">🎞 <span id="frame-count">0</span> frames</div>
+    <button class="btn-ui" id="btn-pause" onclick="onPause()">⏸ Pause</button>
+    <button class="btn-ui" id="btn-skip"  onclick="onSkip()">⏭ Skip</button>
+    <div class="fps-wrap">
+      <span id="fps-txt" class="fps-r">0 FPS</span>
+    </div>
+    <div class="live-pill"><span class="lb"></span>LIVE PROCESSING</div>
+  </div>
+
+</div>
+
+<!-- ═══════════ MAIN DASHBOARD ═══════════ -->
+<div id="dash">
+
+  <!-- ── VIDEO SECTION ── -->
+  <div id="vid-section">
+
+    <div id="vid-box">
+      <img id="vstream" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="ICU camera feed">
+
+      <!-- Corner labels -->
+      <div class="vcorn tl">
+        <span>📷</span>
+        <span id="cam-lbl">ICU CAM 01</span>
+      </div>
+      <div class="vcorn tr" id="ts-lbl">--:--:--</div>
+      <div class="vcorn bl" id="ai-lbl" style="display:none;">
+        <span class="adot"></span>
+        <span>AI ANALYZING</span>
+      </div>
+
+      <!-- #17 — Patient nameplate -->
+      <div id="pat-nameplate">
+        <span class="pnp-label">NOW MONITORING</span>
+        <span class="pnp-name" id="pnp-name">—</span>
+        <span class="pnp-room" id="pnp-room">—</span>
+      </div>
+
+      <!-- #review hold overlay -->
+      <div id="review-overlay">
+        <div class="rv-icon" id="rv-icon">✦</div>
+        <div class="rv-title" id="rv-title">✓ COGNITIVE CORE VERIFIED</div>
+        <div class="rv-sub">Review the AI analysis before proceeding</div>
+        <div class="rv-bar-wrap" id="rv-bar-wrap"><div class="rv-bar" id="rv-bar" style="width:100%"></div></div>
+        <div class="rv-count" id="rv-count-wrap">Proceeding in <span id="rv-count">10</span>s</div>
+        <button id="rv-next-btn" class="rv-next-btn" onclick="onClickNext()" style="display:none">▶ Next Patient</button>
+        <div class="rv-hint" id="rv-hint">Navigating to next patient segment</div>
+      </div>
+
+      <!-- Transition overlay -->
+      <div id="trn-overlay" class="hide">
+        <div class="spin"></div>
+        <h2 id="trn-txt">Switching Camera…</h2>
+        <p id="trn-sub">Preparing next patient segment</p>
+      </div>
+
+      <!-- #16 — Session stats overlay -->
+      <div id="stats-overlay">
+        <div class="stats-box">
+          <div class="stats-title">✓ Monitoring Session Complete</div>
+          <div class="stats-sub">All patient segments processed</div>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-num amber" id="stat-detected">0</div>
+              <div class="stat-lbl">DETECTED</div>
+            </div>
+            <div class="stat-sep"></div>
+            <div class="stat-item">
+              <div class="stat-num green" id="stat-confirmed">0</div>
+              <div class="stat-lbl">CONFIRMED</div>
+            </div>
+            <div class="stat-sep"></div>
+            <div class="stat-item">
+              <div class="stat-num red" id="stat-suppressed">0</div>
+              <div class="stat-lbl">SUPPRESSED</div>
+            </div>
+          </div>
+          <div class="stats-time" id="stat-time"></div>
         </div>
-        <div class="system-status">
-            <button id="btn-manual-pause" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; border: 1px solid var(--panel-border);">⏸ Pause</button>
-            <button id="btn-manual-skip" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; border: 1px solid var(--panel-border);">⏭ Skip</button>
-            <span id="fps-counter" class="fps fps-slow">0 FPS</span>
-            <span class="device-tag">LIVE PROCESSING</span>
+      </div>
+
+      <!-- Pause dialog -->
+      <div id="ctrl-overlay" class="hide">
+        <div class="ctrl-box">
+          <div class="ctrl-ico">🤖</div>
+          <h3>Cognitive Core Verifying…</h3>
+          <p>Gemini 3.1 Flash is performing clinical cross-validation of this incident.</p>
+          <div class="btn-row">
+            <button class="btn-ui btn-primary" onclick="onResume()">▶ Resume</button>
+            <button class="btn-ui" onclick="onSkip()">⏭ Skip</button>
+          </div>
         </div>
-    </header>
+      </div>
+    </div>
 
-    <main class="dashboard">
-        
-        <!-- Left Column: Video Feed & Scene Info -->
-        <section class="video-section">
-            <div class="video-container">
-                <!-- Video stream container -->
-                <img id="video-stream" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Loading stream...">
-                
-                <!-- Playback Controls Overlay -->
-                <div id="controls-overlay" class="controls-overlay hidden">
-                    <div class="control-box">
-                        <h3 id="control-status">AI Analyzing Incident...</h3>
-                        <p>Video paused to review Gemini 3.0 Flash verification.</p>
-                        <div class="btn-group">
-                            <button id="btn-resume" class="btn btn-primary">► Resume Video</button>
-                            <button id="btn-skip" class="btn btn-secondary">⏭ Skip Segment</button>
-                        </div>
-                    </div>
-                </div>
+    <!-- Segment bar -->
+    <div id="seg-bar">
+      <div class="seg-l">
+        <span class="seg-badge" id="seg-prog">[1/7]</span>
+        <span class="seg-title" id="seg-title">Initializing stream…</span>
+      </div>
+      <span class="seg-pill" id="seg-pill">NORMAL</span>
+    </div>
 
-                <!-- Overlay for transitions between datasets -->
-                <div id="transition-overlay" class="overlay hidden">
-                    <div class="spinner"></div>
-                    <h2 id="transition-text">Switching Camera...</h2>
-                </div>
-            </div>
-            
-            <div class="segment-info">
-                <span class="segment-badge" id="segment-progress">[1/7]</span>
-                <span class="segment-title" id="segment-title">Waiting for video stream...</span>
-            </div>
-        </section>
+  </div><!-- end vid-section -->
 
-        <!-- Right Column: Patient Status & Alert Log -->
-        <aside class="sidebar">
-            
-            <!-- Patient Status Card -->
-            <div class="card patient-status">
-                <p class="label">CURRENT PATIENT</p>
-                <h2 id="patient-name">Monitoring...</h2>
-                <div class="status-indicator" id="status-indicator">
-                    <span class="status-dot"></span>
-                    <span id="status-text">SYSTEM STANDBY</span>
-                </div>
-            </div>
+  <!-- ── SIDEBAR ── -->
+  <div id="sidebar">
 
-            <!-- AI Alert Log -->
-            <div class="alert-log-container">
-                <p class="label">INCIDENT LOG (COGNITIVE CORE VERIFIED)</p>
-                <div class="alert-feed" id="alert-feed">
-                    <div class="empty-state" id="empty-alerts">
-                        No incidents detected.
-                    </div>
-                    <!-- Alerts will be injected here dynamically -->
-                </div>
-            </div>
-            
-        </aside>
-    </main>
-    
-    <script src="/static/app.js"></script>
+    <!-- Patient Card -->
+    <div id="pat-card">
+      <div class="ph">
+        <div class="p-avatar av-normal" id="p-av">A</div>
+        <div class="p-info">
+          <div class="p-name" id="p-name">Patient ID: PT-10472</div>
+          <div class="p-room" id="p-room">Room 304 · Bed 2</div>
+        </div>
+        <div class="p-badge" id="p-badge">
+          <span class="bdot"></span>
+          <span id="p-status">MONITORING</span>
+        </div>
+      </div>
+      <!-- Vitals -->
+      <div class="vitals">
+        <div class="vbox">
+          <span class="vi hb" id="vi-hr">♥</span>
+          <span class="vv hr" id="v-hr">72</span>
+          <span class="vu">bpm</span>
+          <span class="vl">HEART RATE</span>
+        </div>
+        <div class="vbox">
+          <span class="vi">💧</span>
+          <span class="vv" id="v-spo2">97</span>
+          <span class="vu">%</span>
+          <span class="vl">SpO₂</span>
+        </div>
+        <div class="vbox">
+          <span class="vi">🩺</span>
+          <span class="vv" id="v-bp">120/80</span>
+          <span class="vu">mmHg</span>
+          <span class="vl">BLOOD PRESS.</span>
+        </div>
+        <div class="vbox">
+          <span class="vi">🌡</span>
+          <span class="vv" id="v-temp">36.8</span>
+          <span class="vu">°C</span>
+          <span class="vl">TEMPERATURE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gauges -->
+    <div id="gauges">
+      <!-- Fall gauge -->
+      <div class="g-card">
+        <span class="g-lbl">FALL RISK</span>
+        <div class="g-wrap">
+          <svg class="g-svg" viewBox="0 0 100 100">
+            <circle class="g-track" cx="50" cy="50" r="38"/>
+            <circle class="g-arc fa" id="fall-arc" cx="50" cy="50" r="38"
+                    stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+          </svg>
+          <div class="g-center">
+            <span class="g-pct" id="fall-pct">0%</span>
+            <span class="g-sub">FALL</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seizure gauge -->
+      <div class="g-card">
+        <span class="g-lbl">SEIZURE RISK</span>
+        <div class="g-wrap">
+          <svg class="g-svg" viewBox="0 0 100 100">
+            <circle class="g-track" cx="50" cy="50" r="38"/>
+            <circle class="g-arc sa" id="sz-arc" cx="50" cy="50" r="38"
+                    stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+          </svg>
+          <div class="g-center">
+            <span class="g-pct" id="sz-pct">0%</span>
+            <span class="g-sub">SEIZURE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gemini Decision Card -->
+    <div id="gem-card">
+      <div class="gem-hdr">
+        <div class="gem-logo">
+          <span class="gem-star">✦</span>
+          <span class="gem-name">COGNITIVE CORE</span>
+        </div>
+        <div class="gem-hdr-right">
+          <span id="gem-time"></span>
+          <span class="gem-tag">Gemini 3.1 Flash</span>
+        </div>
+      </div>
+
+      <!-- Idle state -->
+      <div class="gp" id="g-idle">
+        <div class="g-idle">Awaiting incident for AI verification…</div>
+      </div>
+
+      <!-- Thinking state -->
+      <div class="gp hide" id="g-think">
+        <div class="g-think">
+          <div class="tdots">
+            <div class="td"></div>
+            <div class="td"></div>
+            <div class="td"></div>
+          </div>
+          <div class="g-think-txt">Cross-validating clinical signals…</div>
+        </div>
+      </div>
+
+      <!-- Result state -->
+      <div class="gp hide" id="g-result">
+        <div class="gv" id="g-verdict">—</div>
+        <div class="g-hl"  id="g-hl">—</div>
+        <div class="g-txt" id="g-txt">—</div>
+        <div class="g-sev">
+          <span class="sl">Severity:</span>
+          <span class="sv" id="g-sev">—</span>
+        </div>
+        <ul class="g-acts" id="g-acts"></ul>
+      </div>
+    </div>
+
+    <!-- Alert Log -->
+    <div id="alert-log">
+      <div class="log-hdr">
+        <span class="log-title">INCIDENT LOG</span>
+        <span id="alert-count">0 alerts</span>
+      </div>
+      <div id="log-feed">
+        <div class="log-empty" id="log-empty">
+          <span class="ei">🛡</span>
+          <span>No incidents detected.</span>
+          <span class="es">System monitoring all patients.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end sidebar -->
+
+</div><!-- end dash -->
+
+
+<!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script>
+'use strict';
+
+const CIRC = 238.76;
+const FALL_T = 0.55, SZ_T = 0.48;
+
+/* Patient profiles */
+const PROFILES = {
+  'Patient A': { full:'Patient ID: PT-10472', room:'Room 304 · Bed 2', av:'A', cam:'ICU CAM 01', hr:78, spo2:96, bp:'132/84', temp:36.9 },
+  'Patient B': { full:'Patient ID: PT-20831', room:'Room 107 · Bed 1', av:'B', cam:'ICU CAM 02', hr:88, spo2:94, bp:'118/76', temp:37.2 },
+  'Patient C': { full:'Patient ID: PT-31594', room:'Room 212 · Bed 3', av:'C', cam:'ICU CAM 03', hr:72, spo2:98, bp:'120/80', temp:36.6 },
+};
+
+/* DOM shortcuts */
+const $ = id => document.getElementById(id);
+const vstream    = $('vstream');
+const vidBox     = $('vid-box');
+const camLbl     = $('cam-lbl');
+const tsLbl      = $('ts-lbl');
+const aiLbl      = $('ai-lbl');
+const trnOver    = $('trn-overlay');
+const ctrlOver   = $('ctrl-overlay');
+const trnTxt     = $('trn-txt');
+const segProg    = $('seg-prog');
+const segTitle   = $('seg-title');
+const segPill    = $('seg-pill');
+const fpsTxt     = $('fps-txt');
+const alertToday = $('alert-today');
+const pAv        = $('p-av');
+const pName      = $('p-name');
+const pRoom      = $('p-room');
+const pBadge     = $('p-badge');
+const pStatus    = $('p-status');
+const vHr        = $('v-hr');
+const vSpo2      = $('v-spo2');
+const vBp        = $('v-bp');
+const vTemp      = $('v-temp');
+const fallArc    = $('fall-arc');
+const szArc      = $('sz-arc');
+const fallPct    = $('fall-pct');
+const szPct      = $('sz-pct');
+const gemCard    = $('gem-card');
+const gIdle      = $('g-idle');
+const gThink     = $('g-think');
+const gResult    = $('g-result');
+const gVerdict   = $('g-verdict');
+const gHl        = $('g-hl');
+const gTxt       = $('g-txt');
+const gSev       = $('g-sev');
+const gActs      = $('g-acts');
+const alertCount = $('alert-count');
+const logFeed    = $('log-feed');
+const logEmpty   = $('log-empty');
+const reviewOver = $('review-overlay');
+const rvBar      = $('rv-bar');
+const rvCount    = $('rv-count');
+
+/* Click-to-continue disabled — use 'Next Patient' button or navbar button */
+
+const btnPause   = $('btn-pause');
+const btnSkip    = $('btn-skip');
+const sidebar    = $('sidebar');
+const viHr       = $('vi-hr');
+const navClock   = $('nav-clock');
+const frameCount = $('frame-count');
+const gemTime    = $('gem-time');
+const statsDone  = $('stats-overlay');
+const patPlate   = $('pat-nameplate');
+
+/* State */
+let totalAlerts = 0, isPaused = false, curProfile = PROFILES['Patient A'];
+let curHR = 78, hrInterval = null, clockInterval = null, hbInterval = null;
+let curSegType = 'normal';
+let frameTotal = 0;
+let gemAlertStartTime = 0;
+/* #16 — Session stats */
+let sStats = { detected: 0, confirmed: 0, suppressed: 0 };
+let sessionStartTime = Date.now();
+
+/* ── #18 Fall Gauge Simulation ────────────────────────────────────────
+   Mirrors SIM for seizure. Ramps fall gauge smoothly on fall segments.
+───────────────────────────────────────────────────────────────────── */
+const FSIM = {
+  val: 0, target: 0, active: false, spiked: false, _tid: null,
+};
+
+function _fallTick() {
+  if (!FSIM.active) return;
+  const noise = (Math.random() - 0.5) * (FSIM.spiked ? 1.5 : 2.5);
+  FSIM.val += (FSIM.target - FSIM.val) * (FSIM.spiked ? 0.14 : 0.055) + noise * 0.25;
+  FSIM.val  = Math.max(0, Math.min(100, FSIM.val));
+  if (!FSIM.spiked) {
+    FSIM.target += (Math.random() - 0.5) * 1.4;
+    FSIM.target  = Math.max(30, Math.min(52, FSIM.target));
+  } else {
+    FSIM.target += (Math.random() - 0.5) * 0.9;
+    FSIM.target  = Math.max(84, Math.min(97, FSIM.target));
+  }
+  _renderFall(FSIM.val / 100);
+  FSIM._tid = setTimeout(_fallTick, 110);
+}
+
+function fallSimStart() {
+  if (FSIM._tid) clearTimeout(FSIM._tid);
+  FSIM.val    = 0;
+  FSIM.target = 34 + Math.random() * 14;
+  FSIM.active = true;
+  FSIM.spiked = false;
+  FSIM._tid   = setTimeout(_fallTick, 110);
+}
+
+function fallSimSpike() {
+  FSIM.spiked = true;
+  FSIM.target = 87 + Math.random() * 10;
+}
+
+function fallSimStop() {
+  FSIM.active = false; FSIM.spiked = false;
+  if (FSIM._tid) { clearTimeout(FSIM._tid); FSIM._tid = null; }
+  const d = setInterval(() => {
+    FSIM.val = Math.max(0, FSIM.val - 2.5);
+    _renderFall(FSIM.val / 100);
+    if (FSIM.val <= 0) clearInterval(d);
+  }, 80);
+}
+
+/* #8 — Gradient color for fall arc based on value */
+function _fallColor(v) {
+  if (v < 0.35) return '#f59e0b';            // amber
+  if (v < 0.55) return '#f97316';            // orange
+  return '#ef4444';                          // red
+}
+
+function _renderFall(v) {
+  const color = _fallColor(v);
+  fallArc.style.stroke       = color;
+  fallArc.style.strokeDashoffset = CIRC * (1 - v);
+  /* #23 — Smooth number */
+  _animNum(fallPct, parseInt(fallPct.textContent) || 0, Math.round(v * 100), '%');
+  fallArc.classList.toggle('hot', v >= FALL_T);
+  fallPct.style.color = color;
+}
+
+/* ── Seizure Gauge Simulation ────────────────────────── */
+const SIM = {
+  val: 0, target: 0, active: false, spiked: false, _tid: null,
+};
+
+function _szTick() {
+  if (!SIM.active) return;
+  const noise = (Math.random() - 0.5) * (SIM.spiked ? 1.5 : 2.2);
+  SIM.val += (SIM.target - SIM.val) * (SIM.spiked ? 0.14 : 0.055) + noise * 0.25;
+  SIM.val  = Math.max(0, Math.min(100, SIM.val));
+  if (!SIM.spiked) {
+    SIM.target += (Math.random() - 0.5) * 1.2;
+    SIM.target  = Math.max(28, Math.min(46, SIM.target));
+  } else {
+    SIM.target += (Math.random() - 0.5) * 0.8;
+    SIM.target  = Math.max(82, Math.min(96, SIM.target));
+  }
+  _renderSz(SIM.val / 100);
+  SIM._tid = setTimeout(_szTick, 110);
+}
+
+function szSimStart() {
+  if (SIM._tid) clearTimeout(SIM._tid);
+  SIM.val    = 0;
+  SIM.target = 32 + Math.random() * 12;
+  SIM.active = true;
+  SIM.spiked = false;
+  SIM._tid   = setTimeout(_szTick, 110);
+}
+
+function szSimSpike() {
+  SIM.spiked = true;
+  SIM.target = 88 + Math.random() * 8;
+}
+
+function szSimStop() {
+  SIM.active = false; SIM.spiked = false;
+  if (SIM._tid) { clearTimeout(SIM._tid); SIM._tid = null; }
+  const d = setInterval(() => {
+    SIM.val = Math.max(0, SIM.val - 2.5);
+    _renderSz(SIM.val / 100);
+    if (SIM.val <= 0) clearInterval(d);
+  }, 80);
+}
+
+/* #8 — Gradient color for seizure arc */
+function _szColor(v) {
+  if (v < 0.40) return '#a855f7';            // purple
+  if (v < SZ_T) return '#c084fc';            // light purple
+  if (v < 0.75) return '#f97316';            // orange (warning)
+  return '#ef4444';                          // red (critical)
+}
+
+function _renderSz(v) {
+  const color = _szColor(v);
+  szArc.style.stroke          = color;
+  szArc.style.strokeDashoffset = CIRC * (1 - v);
+  _animNum(szPct, parseInt(szPct.textContent) || 0, Math.round(v * 100), '%');
+  szArc.classList.toggle('hot', v >= SZ_T);
+  szPct.style.color = color;
+}
+
+/* #23 — Smooth number counter animation */
+function _animNum(el, from, to, suffix = '') {
+  if (from === to) return;
+  const diff  = to - from;
+  const steps = Math.min(Math.abs(diff), 18);
+  const step  = diff / steps;
+  let cur = from, count = 0;
+  const old = el._numInterval;
+  if (old) clearInterval(old);
+  el._numInterval = setInterval(() => {
+    count++;
+    cur += step;
+    el.textContent = Math.round(cur) + suffix;
+    if (count >= steps) {
+      el.textContent = to + suffix;
+      clearInterval(el._numInterval);
+    }
+  }, 14);
+}
+
+/* ── WebSocket ── */
+const ws = new WebSocket('ws://' + location.host + '/stream');
+ws.onopen  = () => { startClock(); startVitals(); sessionStartTime = Date.now(); };
+ws.onclose = () => {
+  pName.textContent = 'CONNECTION LOST';
+  fpsTxt.textContent = '0 FPS'; fpsTxt.className = 'fps-r';
+};
+ws.onmessage = e => {
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+  if      (d.type === 'segment_start') onSegStart(d);
+  else if (d.type === 'transition')    onTransition(d);
+  else if (d.type === 'frame_update')  onFrame(d);
+  else if (d.type === 'gemini_tier2')  onT2(d);
+  else if (d.type === 'gemini_report') onReport(d);
+  else if (d.type === 'alert_review') onReview(d);
+  else if (d.type === 'review_tick')  onReviewTick(d);
+  else if (d.type === 'demo_complete') onDone();
+};
+
+/* ── Handlers ── */
+function onSegStart(d) {
+  trnOver.classList.add('hide');
+  ctrlOver.classList.add('hide');
+  reviewOver.classList.remove('show'); // hide review overlay for new segment
+  _restoreSkipBtn();                   // restore Skip button label
+  const lbl  = (d.label || '').toLowerCase();
+  const type = lbl.includes('fall') ? 'fall' : lbl.includes('seiz') || lbl.includes('unusual') ? 'seizure' : 'normal';
+  curSegType = type;
+
+  segProg.textContent  = '[' + (d.progress || '?/?') + ']';
+  segTitle.textContent = d.label || '';
+  segPill.textContent  = type === 'fall' ? 'FALL EVENT' : type === 'seizure' ? 'SEIZURE EPISODE' : 'NORMAL ACTIVITY';
+  segPill.className    = 'seg-pill' + (type === 'fall' ? ' fall' : type === 'seizure' ? ' seizure' : '');
+
+  vidBox.className = '';
+  aiLbl.style.display = 'none';
+  setPatient(d.patient || 'Patient A');
+  setStatus('monitor', 'MONITORING');
+  showGem('idle');
+  gemCard.className = '';
+  gemTime.classList.remove('show');
+
+  /* Reset gauges and start simulation for the segment type */
+  if (type === 'fall') {
+    fallSimStart();
+    szSimStop();
+  } else if (type === 'seizure') {
+    szSimStart();
+    fallSimStop();
+  } else {
+    fallSimStop();
+    szSimStop();
+  }
+
+  /* #17 — Show patient nameplate for 3s */
+  const p = PROFILES[d.patient || 'Patient A'] || PROFILES['Patient A'];
+  $('pnp-name').textContent = p.full;
+  $('pnp-room').textContent = p.room + ' · ' + p.cam;
+  patPlate.classList.add('show');
+  setTimeout(() => patPlate.classList.remove('show'), 3200);
+}
+
+function onTransition(d) {
+  trnTxt.textContent = d.message || 'Switching Camera…';
+  $('trn-sub').textContent = 'Preparing next patient segment';
+  trnOver.classList.remove('hide');
+}
+
+function onFrame(d) {
+  if (d.frame_b64) vstream.src = 'data:image/jpeg;base64,' + d.frame_b64;
+  const fps = d.fps || 0;
+  fpsTxt.textContent = fps + ' FPS';
+  fpsTxt.className   = fps > 20 ? 'fps-g' : fps > 10 ? 'fps-a' : 'fps-r';
+
+  /* #21 — Frame counter */
+  frameTotal++;
+  frameCount.textContent = frameTotal.toLocaleString();
+
+  setGauge('fall',    d.fall_risk    || 0);
+  setGauge('seizure', d.seizure_risk || 0);
+  if (d.analyzing) aiLbl.style.display = 'flex';
+  if (d.alert) fireAlert(d.alert);
+}
+
+function onT2(d) {
+  const ok   = d.decision === 'CONFIRMED';
+  const mini = $('mini-' + d.alert_id);
+  if (mini) {
+    mini.className = 'ac-gem';
+    mini.innerHTML = '<div class="mbadge ' + (ok?'ok':'no') + '">' + (ok?'✓ CONFIRMED':'✗ SUPPRESSED') + '</div><div class="mtxt">' + (d.reason||'') + '</div>';
+  }
+  showGem('result');
+  gemCard.className = ok ? 'gc' : 'gs';
+  gVerdict.textContent = ok ? '✓ CONFIRMED' : '✗ SUPPRESSED';
+  gVerdict.className   = 'gv ' + (ok?'ok':'no');
+  gHl.textContent  = ok ? 'Confirming — full analysis in progress…' : 'Alert Suppressed — False Alarm';
+  gTxt.textContent = d.reason || '';
+  gSev.textContent = ''; gSev.className = 'sv';
+  gActs.innerHTML  = '';
+}
+
+function onReport(d) {
+  const r  = d.report || {}, ok = r.decision === 'CONFIRMED';
+  const mini = $('mini-' + d.alert_id);
+
+  /* #15 — Show verify time */
+  if (gemAlertStartTime) {
+    const elapsed = ((Date.now() - gemAlertStartTime) / 1000).toFixed(1);
+    gemTime.textContent = '⚡ ' + elapsed + 's';
+    gemTime.classList.add('show');
+    gemAlertStartTime = 0;
+  }
+
+  /* #16 — Track confirmed/suppressed */
+  if (ok) sStats.confirmed++; else sStats.suppressed++;
+
+  if (mini) {
+    mini.className = 'ac-gem';
+    const acts = (r.actions||[]).slice(0,2).map(a => '<div style="margin-top:2px;font-size:0.65rem;color:#8b9ab7">→ '+a+'</div>').join('');
+    mini.innerHTML = '<div class="mbadge '+(ok?'ok':'no')+'">'+(ok?'✓ CONFIRMED':'✗ SUPPRESSED')+'</div><div class="mtxt">'+(r.headline||'')+'</div>'+acts;
+  }
+  if (!ok) {
+    const c = $('ac-' + d.alert_id);
+    if (c) { c.style.opacity='0.5'; c.style.borderLeftColor='#4b5a72'; c.querySelector('.ac-type').style.color='#4b5a72'; }
+  }
+
+  showGem('result');
+  const sev = (r.severity||'moderate').toLowerCase();
+  gemCard.className = ok ? 'gc' : 'gs';
+  gVerdict.textContent = ok ? '✓ CONFIRMED' : '✗ SUPPRESSED';
+  gVerdict.className   = 'gv ' + (ok?'ok':'no');
+  gHl.textContent  = r.headline  || 'Analysis Complete';
+
+  /* #6 — Typewriter for narrative */
+  typewriterSet(gTxt, r.narrative || '');
+
+  gSev.textContent = sev.toUpperCase();
+  gSev.className   = 'sv ' + ({low:'low',moderate:'mod',high:'hi',critical:'crit'}[sev]||'mod');
+  gActs.innerHTML  = (r.actions||[]).slice(0,3).map(a => '<li>'+a+'</li>').join('');
+  aiLbl.style.display = 'none';
+}
+
+function onDone() {
+  const s = trnOver.querySelector('.spin');
+  if (s) s.style.display = 'none';
+  trnTxt.textContent = '✓ Demo Complete';
+  $('trn-sub').textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'') + ' recorded';
+  trnOver.classList.remove('hide');
+
+  /* #16 — Show session stats overlay */
+  $('stat-detected').textContent  = sStats.detected;
+  $('stat-confirmed').textContent = sStats.confirmed;
+  $('stat-suppressed').textContent= sStats.suppressed;
+  const elapsed = Math.round((Date.now() - sessionStartTime) / 1000);
+  const mins    = Math.floor(elapsed / 60), secs = elapsed % 60;
+  $('stat-time').textContent = `Session duration: ${mins}m ${secs}s  ·  ${frameTotal.toLocaleString()} frames processed`;
+  setTimeout(() => statsDone.classList.add('show'), 1200);
+}
+
+/* ── Alert Review Hold ── */
+let _reviewDuration = 0;
+function onReview(d) {
+  _reviewDuration = d.duration || 0;
+  const wasConfirmed = (gVerdict.textContent || '').includes('CONFIRMED');
+  const iconEl  = $('rv-icon');
+  const titleEl = $('rv-title');
+  const hintEl  = $('rv-hint');
+  const barWrap = $('rv-bar-wrap');
+  const cntWrap = $('rv-count-wrap');
+  const nextBtn = $('rv-next-btn');
+
+  if (iconEl)  iconEl.textContent = wasConfirmed ? '✦' : '⚬';
+  if (titleEl) {
+    titleEl.textContent = wasConfirmed
+      ? '✓ ALERT CONFIRMED — Nursing Team Notified'
+      : '✗ ALERT SUPPRESSED — False Positive';
+    titleEl.style.color = wasConfirmed ? '#34d399' : '#f59e0b';
+    titleEl.style.textShadow = wasConfirmed
+      ? '0 0 16px rgba(52,211,153,0.4)'
+      : '0 0 16px rgba(245,158,11,0.4)';
+  }
+
+  if (_reviewDuration === 0) {
+    /* Manual mode — show Next Patient button, hide bar/countdown */
+    if (barWrap) barWrap.style.display = 'none';
+    if (cntWrap) cntWrap.style.display = 'none';
+    if (nextBtn) nextBtn.style.display  = 'inline-flex';
+    if (hintEl)  hintEl.textContent = 'Review complete — proceed when ready';
+    /* Also update the navbar Skip button */
+    btnSkip.textContent = '▶ Next Patient';
+    btnSkip.style.background = '#34d399';
+    btnSkip.style.color      = '#000';
+    btnSkip.style.border     = 'none';
+  } else {
+    /* Timed mode */
+    if (barWrap) barWrap.style.display = '';
+    if (cntWrap) cntWrap.style.display = '';
+    if (nextBtn) nextBtn.style.display  = 'none';
+    if (hintEl)  hintEl.textContent = 'Click anywhere to continue immediately';
+    rvCount.textContent = _reviewDuration;
+    rvBar.style.transition = 'none';
+    rvBar.style.width = '100%';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      rvBar.style.transition = 'width 0.95s linear';
+    }));
+  }
+  reviewOver.classList.add('show');
+}
+
+function onReviewTick(d) {
+  if (_reviewDuration === 0) return; // manual mode — no ticks needed
+  const rem = d.remaining;
+  rvCount.textContent = rem;
+  rvBar.style.width = Math.round((rem / _reviewDuration) * 100) + '%';
+  if (rem <= 0) setTimeout(() => reviewOver.classList.remove('show'), 400);
+}
+
+function onClickNext() {
+  /* Dismiss overlay and signal backend to proceed */
+  reviewOver.classList.remove('show');
+  _restoreSkipBtn();
+  if (ws.readyState === 1) ws.send(JSON.stringify({action: 'skip'}));
+}
+
+function _restoreSkipBtn() {
+  btnSkip.textContent       = '⏭ Skip';
+  btnSkip.style.background  = '';
+  btnSkip.style.color       = '';
+  btnSkip.style.border      = '';
+}
+
+/* ── Alert ── */
+function fireAlert(a) {
+  const { alert_id: id, event_type: type, confidence: conf, timestamp: ts } = a;
+  if ($('ac-' + id)) return;
+  totalAlerts++;
+  sStats.detected++;
+  alertToday.textContent = totalAlerts;
+  alertCount.textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'');
+  logEmpty.style.display = 'none';
+  setStatus(type, type === 'seizure' ? '⚠ SEIZURE ALERT' : '⚠ FALL ALERT');
+  vidBox.className = type === 'seizure' ? 'as' : 'af';
+  showGem('think');
+  aiLbl.style.display = 'flex';
+
+  /* #15 — Start timer for verify time */
+  gemAlertStartTime = Date.now();
+
+  /* Spike gauges on alert */
+  if (type === 'seizure') szSimSpike();
+  else fallSimSpike();
+
+  /* #9 — Avatar alert color */
+  pAv.className = 'p-avatar ' + (type === 'seizure' ? 'av-seizure' : 'av-fall');
+
+  /* #5 — Sidebar shake */
+  sidebar.classList.remove('shaking');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('shaking');
+  setTimeout(() => sidebar.classList.remove('shaking'), 400);
+
+  const card = document.createElement('div');
+  card.id = 'ac-' + id;
+  card.className = 'ac ' + type;
+  card.innerHTML = `
+    <div class="ac-top">
+      <div>
+        <div class="ac-type">${type==='seizure'?'⚠ SEIZURE DETECTED':'⚠ FALL DETECTED'}</div>
+        <div class="ac-conf">Confidence: ${Math.round(conf*100)}%</div>
+      </div>
+      <div class="ac-r">
+        <span class="ac-time">${ts}</span>
+        <button class="ac-x" onclick="rmCard('ac-${id}')">×</button>
+      </div>
+    </div>
+    <div class="ac-gem thinking" id="mini-${id}">
+      <div class="mpulse"></div>
+      <span>Cognitive Core verifying…</span>
+    </div>`;
+  logFeed.insertBefore(card, logFeed.firstChild);
+}
+
+function rmCard(id) {
+  const c = $(id); if (c) c.remove();
+  if (!logFeed.querySelector('.ac')) logEmpty.style.display = '';
+}
+
+/* ── Gauges ── */
+function setGauge(type, val) {
+  const v = Math.min(1, Math.max(0, val));
+  if (type === 'fall') {
+    /* During seizure segment, cap fall display to avoid misleading dual-high reading */
+    const display = (curSegType === 'seizure') ? Math.min(v, 0.20) : v;
+    /* Only override simulation if backend is meaningfully higher */
+    if (!FSIM.active) {
+      _renderFall(display);
+    } else if (v > FSIM.val / 100 + 0.05) {
+      FSIM.val    = display * 100;
+      FSIM.target = Math.max(FSIM.target, display * 100);
+    }
+  } else {
+    const simV = SIM.val / 100;
+    if (v > simV + 0.05) { SIM.val = v * 100; SIM.target = Math.max(SIM.target, v * 100); }
+    if (!SIM.active) _renderSz(v);
+  }
+}
+
+/* ── Patient profile ── */
+function setPatient(key) {
+  const p = PROFILES[key] || PROFILES['Patient A'];
+  curProfile = p; curHR = p.hr;
+  pName.textContent  = p.full;
+  pRoom.textContent  = p.room;
+  pAv.textContent    = p.av;
+  pAv.className      = 'p-avatar av-normal';
+  if (camLbl) camLbl.textContent = p.cam;
+  vHr.textContent   = p.hr;
+  vSpo2.textContent = p.spo2;
+  vBp.textContent   = p.bp;
+  vTemp.textContent = p.temp.toFixed(1);
+  startVitals();
+}
+
+/* ── Status badge ── */
+function setStatus(type, txt) {
+  pStatus.textContent = txt;
+  pBadge.className = 'p-badge' + (type==='fall'?' pf':type==='seizure'?' ps':'');
+  if (type==='fall'||type==='seizure') {
+    pBadge.classList.add('pa');
+    /* #12 — Bounce animation */
+    pBadge.classList.remove('bouncing');
+    void pBadge.offsetWidth;
+    pBadge.classList.add('bouncing');
+  }
+}
+
+/* ── Gemini state ── */
+function showGem(s) {
+  gIdle.classList.add('hide');
+  gThink.classList.add('hide');
+  gResult.classList.add('hide');
+  if (s==='idle')   gIdle.classList.remove('hide');
+  else if (s==='think')  gThink.classList.remove('hide');
+  else if (s==='result') gResult.classList.remove('hide');
+}
+
+/* ── #6 Typewriter effect ── */
+function typewriterSet(el, text, speed = 16) {
+  el.textContent = '';
+  let i = 0;
+  if (el._twInterval) clearInterval(el._twInterval);
+  el._twInterval = setInterval(() => {
+    el.textContent += text[i] || '';
+    i++;
+    if (i >= text.length) clearInterval(el._twInterval);
+  }, speed);
+}
+
+/* ── #2 + #3 Vitals simulation ── */
+function startVitals() {
+  if (hrInterval) clearInterval(hrInterval);
+  if (hbInterval) clearInterval(hbInterval);
+
+  hrInterval = setInterval(() => {
+    /* HR drift */
+    const d = (Math.random()>0.5?1:-1) * Math.round(Math.random()*2);
+    curHR = Math.max(curProfile.hr-4, Math.min(curProfile.hr+4, curHR+d));
+    _animNum(vHr, parseInt(vHr.textContent)||curHR, curHR, '');
+
+    /* #3 — SpO₂ drift */
+    const newSpo2 = curProfile.spo2 + Math.round((Math.random()-0.5)*2);
+    const spo2 = Math.max(curProfile.spo2-2, Math.min(curProfile.spo2+1, newSpo2));
+    vSpo2.textContent = spo2;
+
+    /* #3 — Temp drift */
+    const curT = parseFloat(vTemp.textContent) || curProfile.temp;
+    const newT = Math.max(curProfile.temp-0.3, Math.min(curProfile.temp+0.3, curT + (Math.random()-0.5)*0.15));
+    vTemp.textContent = newT.toFixed(1);
+  }, 2200);
+
+  /* #2 — Heartbeat pulse in sync with BPM */
+  hbInterval = setInterval(() => {
+    if (!viHr) return;
+    viHr.style.transform = 'scale(1.45)';
+    setTimeout(() => { if (viHr) viHr.style.transform = 'scale(1)'; }, 110);
+  }, 60000 / curHR);
+}
+
+/* ── #20 Clock ── */
+function startClock() {
+  if (clockInterval) clearInterval(clockInterval);
+  const tick = () => {
+    const n  = new Date();
+    const t  = String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+    tsLbl.textContent    = t;
+    navClock.textContent = t;
+  };
+  tick(); clockInterval = setInterval(tick, 1000);
+}
+
+/* ── Buttons ── */
+function onPause() {
+  isPaused = !isPaused;
+  btnPause.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
+  if (ws.readyState===1) ws.send(JSON.stringify({action: isPaused?'pause':'resume'}));
+}
+function onSkip() {
+  /* If we're in the review hold, treat Skip as Next Patient */
+  if (reviewOver.classList.contains('show')) { onClickNext(); return; }
+  trnTxt.textContent = 'Skipping to next patient…';
+  $('trn-sub').textContent = '';
+  trnOver.classList.remove('hide');
+  if (ws.readyState===1) ws.send(JSON.stringify({action:'skip'}));
+}
+function onResume() {
+  ctrlOver.classList.add('hide');
+  isPaused = false;
+  btnPause.textContent = '⏸ Pause';
+  if (ws.readyState===1) ws.send(JSON.stringify({action:'resume'}));
+}
+
+/* Init */
+setPatient('Patient A');
+</script>
 </body>
 </html>
