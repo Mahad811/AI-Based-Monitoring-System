@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Guardian — Staff Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="login.css">
+</head>
+<body>
+    <div class="background-anim">
+        <div class="blob b1"></div>
+        <div class="blob b2"></div>
+        <div class="blob b3"></div>
+    </div>
+
+    <div class="login-wrapper">
+        <div class="glass-card">
+            <div class="brand">
+                <div class="pulse-dot"></div>
+                <h1>VITAL GUARDIAN</h1>
+                <p>Cognitive Core Auth System</p>
+            </div>
+            
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">Staff ID</label>
+                    <input type="text" id="username" placeholder="e.g. nurse1, nurse2, admin" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="password">Security Key</label>
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+                
+                <div id="error-msg" class="error-msg hidden">Invalid credentials.</div>
+                
+                <button type="submit" id="submit-btn" class="login-btn">
+                    <span id="btn-text">Authenticate Context</span>
+                    <div id="btn-loader" class="loader hidden"></div>
+                </button>
+            </form>
+
+            <div class="footer">
+                Secured by Gemini 3.1 Advanced Protocols
+            </div>
+        </div>
+    </div>
+
+    <script src="login.js"></script>
+</body>
+</html>

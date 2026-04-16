@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Guardian — Staff Roster</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+<script>
+    if (!localStorage.getItem('vg_token')) {
+        window.location.href = '/static/login.html';
+    } else if (localStorage.getItem('vg_staff_id') !== 'admin') {
+        alert("Access Denied: Administrator privileges required.");
+        window.location.href = '/static/index.html';
+    }
+</script>
+</head>
+<body>
+    <div id="navbar">
+        <div class="logo-area">
+            <div class="pdot"></div>
+            <div class="logo-txt">
+                <span class="logo-brand">VITAL GUARDIAN</span>
+                <span class="logo-sub">Staff Management System</span>
+            </div>
+        </div>
+        <div class="nav-right">
+            <a href="/static/index.html" class="btn-ui">🔙 Back to ICU Dashboard</a>
+        </div>
+    </div>
+
+    <div class="admin-container">
+        <!-- New Nurse panel -->
+        <div class="glass-card add-card">
+            <h2>Add New Staff</h2>
+            <form id="add-nurse-form">
+                <div class="input-group">
+                    <label>Staff ID</label>
+                    <input type="text" id="add-id" placeholder="e.g. NURS-303" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Full Name</label>
+                    <input type="text" id="add-name" placeholder="Jane Doe" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Security Key</label>
+                    <input type="password" id="add-pass" required>
+                </div>
+                <button type="submit" class="btn-primary">Register Staff</button>
+            </form>
+        </div>
+
+        <!-- Roster Table -->
+        <div class="glass-card table-card">
+            <h2>Active PostgreSQL Roster</h2>
+            <div class="table-wrapper">
+                <table id="roster-table">
+                    <thead>
+                        <tr>
+                            <th>Internal DB ID</th>
+                            <th>Staff ID</th>
+                            <th>Full Name</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="roster-body">
+                        <!-- Populated dynamically by Postgres backend -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Guardian — Multi-Patient Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+<style>
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+.patient-card { background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; transition: all 0.3s; cursor: pointer; position: relative; overflow: hidden; }
+.patient-card:hover { transform: translateY(-3px); border-color: #dca54c; box-shadow: 0 10px 25px rgba(220,165,76,0.15); }
+.pt-name { font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 5px; }
+.pt-room { font-size: 0.8rem; color: #8b9ab7; font-family: 'JetBrains Mono', monospace; }
+.pt-risk { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; margin-top: 15px; }
+.risk-high { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.risk-protocol { background: rgba(220, 165, 76, 0.15); color: #dca54c; border: 1px solid rgba(220, 165, 76, 0.3); }
+.risk-stable { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+.btn-cam { position: absolute; bottom: 20px; right: 20px; background: #34d399; color: #000; border: none; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; transition: 0.2s; box-shadow: 0 0 15px rgba(52,211,153,0.4); }
+.patient-card:hover .btn-cam { transform: scale(1.1); }
+</style>
+<script>
+    if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';
+</script>
+</head>
+<body>
+    <div id="navbar">
+        <div class="logo-area">
+            <div class="pdot"></div>
+            <div class="logo-txt">
+                <span class="logo-brand">VITAL GUARDIAN</span>
+                <span class="logo-sub">Central Monitoring Hub</span>
+            </div>
+        </div>
+        <div class="nav-right" style="display:flex; gap:10px;">
+            <a href="/static/history.html" class="btn-ui">📋 Incident Logs</a>
+            <a href="/static/admin.html" id="admin-hub-btn" class="btn-ui" style="display:none; color:#dca54c; border-color:#dca54c;">⚙️ Staff Admin</a>
+            <button onclick="logout()" class="btn-ui" style="color:#ef4444; border-color:#ef4444;">Logout</button>
+        </div>
+    </div>
+
+    <div style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
+        <h2 style="font-weight: 800; font-size: 1.8rem; margin-bottom: 5px;">Active Ward</h2>
+        <p style="color: #8b9ab7; margin-bottom: 30px;">Select a patient card to bring their CCTV camera feed online.</p>
+        
+        <div class="hub-grid" id="patients-grid">
+            <!-- Loaded by JS -->
+        </div>
+    </div>
+
+    <script>
+        const staffId = localStorage.getItem('vg_staff_id');
+        if (staffId === 'admin') document.getElementById('admin-hub-btn').style.display = 'block';
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/static/login.html';
+        }
+
+        async function loadPatients() {
+            try {
+                const res = await fetch('/api/patients');
+                const data = await res.json();
+                
+                const grid = document.getElementById('patients-grid');
+                grid.innerHTML = '';
+                
+                data.forEach(p => {
+                    let rClass = 'risk-stable';
+                    if (p.risk_profile.includes('Fall')) rClass = 'risk-high';
+                    if (p.risk_profile.includes('Protocol')) rClass = 'risk-protocol';
+
+                    const card = document.createElement('div');
+                    card.className = 'patient-card';
+                    card.onclick = () => window.location.href = `/static/index.html?patient=${p.id}`;
+                    card.innerHTML = `
+                        <div class="pt-name">${p.name}</div>
+                        <div class="pt-room">Room: ${p.room} • Age: ${p.age}</div>
+                        <div class="pt-risk ${rClass}">${p.risk_profile}</div>
+                        <div class="btn-cam">📹</div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        
+        loadPatients();
+    </script>
+</body>
+</html>

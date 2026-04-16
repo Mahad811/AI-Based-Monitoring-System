@@ -36,15 +36,18 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(ROOT / ".env")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 
 sys.path.append(str(ROOT))
 from visual_guardian.pipeline import VisionPipeline
 from cognitive_core.gemini_verifier import GeminiVerifier
+from database import init_db, get_db, Nurse, Patient, IncidentLog, SessionLocal
+from sqlalchemy.orm import Session
 
 # ─────────────────────────────────────────────────────
 # SETTINGS
@@ -101,108 +104,22 @@ def _find_clips(directory: Path, extensions=(".mp4", ".avi", ".mov")) -> list[Pa
     return found
 
 
-def _build_segments() -> list[dict]:
-    """
-    Scan demo_dataset and build a SEGMENTS list automatically.
-
-    Expected layout (any extra nesting is handled by rglob):
-      demo_dataset/
-        falls/                      → fall events
-        fall_test/fall/             → additional fall clips
-        normal/                     → normal (no-fall) activity
-        fall_test/nofall/           → additional no-fall clips
-        unusual_movement/data/Normal/   → normal patient movement (seizure model)
-        unusual_movement/data/Seizure/  → seizure episodes
-    """
-    D = _DATASET_ROOT
-
-    fall_clips    = (_find_clips(D / "falls") +
-                     _find_clips(D / "fall_test" / "fall"))
-    normal_clips  = (_find_clips(D / "normal") +
-                     _find_clips(D / "fall_test" / "nofall"))
+def _build_clip_mapping():
+    D = Path(os.getenv("VG_DEMO_VIDEO_ROOT", str(ROOT / "demo_dataset")))
+    fall_clips    = (_find_clips(D / "falls") + _find_clips(D / "fall_test" / "fall"))
+    normal_clips  = (_find_clips(D / "normal") + _find_clips(D / "fall_test" / "nofall"))
     sz_normal_clips  = _find_clips(D / "unusual_movement" / "data" / "Normal")
-    seizure_clips    = _find_clips(D / "unusual_movement" / "data" / "Seizure")
+    sz_clips    = _find_clips(D / "unusual_movement" / "data" / "Seizure")
+    
+    return {
+        "fall_1": [fall_clips[0]] if len(fall_clips) > 0 else [],
+        "fall_2": [fall_clips[1]] if len(fall_clips) > 1 else [],
+        "normal_1": [normal_clips[0]] if len(normal_clips) > 0 else [],
+        "seizure_1": sz_normal_clips[:2] + sz_clips[:2],
+        "seizure_2": sz_normal_clips[2:4] + sz_clips[2:4],
+    }
 
-    if not (fall_clips or normal_clips or sz_normal_clips or seizure_clips):
-        print(f"[WARN] No demo clips found under {D}. "
-              "Set VG_DEMO_VIDEO_ROOT to point at your dataset.")
-
-    segments = []
-    seg_id   = 1
-
-    # ── Patient A — Sequence: Normal first, then both falls ────────────────────
-    # Showing normal first establishes baseline before alerts fire.
-
-    # 1. Normal (B_M_48.mp4)
-    clip_bm_48 = next((p for p in normal_clips if p.name == "B_M_48.mp4"), None)
-    if clip_bm_48:
-        segments.append({
-            "id": seg_id, "patient": "Patient A", "type": "normal",
-            "label": "Normal Activity",
-            "clips": [clip_bm_48],
-        })
-        seg_id += 1
-
-    # 2. Fall (B_M_79.mp4)
-    clip_bm_79 = next((p for p in fall_clips if p.name == "B_M_79.mp4"), None)
-    if clip_bm_79:
-        segments.append({
-            "id": seg_id, "patient": "Patient A", "type": "fall",
-            "label": "Fall Event",
-            "clips": [clip_bm_79],
-        })
-        seg_id += 1
-
-    # 3. Fall (20240918191124.mp4)
-    clip_2024 = next((p for p in fall_clips if p.name == "20240918191124.mp4"), None)
-    if clip_2024:
-        segments.append({
-            "id": seg_id, "patient": "Patient A", "type": "fall",
-            "label": "Fall Event",
-            "clips": [clip_2024],
-        })
-        seg_id += 1
-
-    # ── Patient B — normal (seizure camera) ──────────────────────────────────
-    if sz_normal_clips:
-        segments.append({
-            "id": seg_id, "patient": "Patient B", "type": "normal",
-            "label": "Patient Resting Normally",
-            "clips": sz_normal_clips[:2],
-        })
-        seg_id += 1
-
-    # ── Patient B — seizure ───────────────────────────────────────────────────
-    if seizure_clips:
-        segments.append({
-            "id": seg_id, "patient": "Patient B", "type": "seizure",
-            "label": "Seizure Episode",
-            "clips": seizure_clips[:2],
-        })
-        seg_id += 1
-
-    # ── Patient C — normal (different subject, seizure camera) ───────────────
-    if len(sz_normal_clips) >= 3:
-        segments.append({
-            "id": seg_id, "patient": "Patient C", "type": "normal",
-            "label": "Patient Active (High Motion)",
-            "clips": sz_normal_clips[2:4],
-        })
-        seg_id += 1
-
-    # ── Patient C — seizure ───────────────────────────────────────────────────
-    if len(seizure_clips) >= 3:
-        segments.append({
-            "id": seg_id, "patient": "Patient C", "type": "seizure",
-            "label": "Seizure Episode",
-            "clips": seizure_clips[2:4],
-        })
-        seg_id += 1
-
-    return segments
-
-
-SEGMENTS = _build_segments()
+CLIP_MAPPING = _build_clip_mapping()
 
 
 # ─────────────────────────────────────────────────────
@@ -214,10 +131,91 @@ PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
 
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
 @app.get("/")
 def serve_dashboard():
-    return FileResponse(PUBLIC_DIR / "index.html")
+    return RedirectResponse(url="/static/login.html")
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+def verify_admin(req: Request):
+    auth = req.headers.get("Authorization")
+    if not auth or "Bearer " not in auth: raise HTTPException(status_code=401, detail="Missing Token")
+    token = auth.split(" ")[1]
+    try:
+        decoded = base64.b64decode(token).decode()
+        username = decoded.split(":")[0]
+        if username != "admin": raise HTTPException(status_code=403, detail="Forbidden: Admins only")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Token")
+
+@app.post("/api/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(Nurse).filter(Nurse.staff_id == req.username.lower()).first()
+    if not user or user.password != req.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+    token = base64.b64encode(f"{req.username}:{time.time()}".encode()).decode()
+    return {
+        "status": "success", "token": token,
+        "nurse_id": str(user.id), "nurse_name": user.name, "staff_id": user.staff_id
+    }
+
+class NurseCreate(BaseModel):
+    staff_id: str
+    name: str
+    password: str
+
+@app.get("/api/admin/nurses")
+def get_nurses(db: Session = Depends(get_db), _: None = Depends(verify_admin)):
+    return [{"id": n.id, "staff_id": n.staff_id, "name": n.name} for n in db.query(Nurse).all()]
+
+@app.post("/api/admin/nurses")
+def create_nurse(nurse_data: NurseCreate, db: Session = Depends(get_db), _: None = Depends(verify_admin)):
+    if db.query(Nurse).filter(Nurse.staff_id == nurse_data.staff_id.lower()).first():
+        raise HTTPException(status_code=400, detail="Staff ID already exists.")
+    db.add(Nurse(staff_id=nurse_data.staff_id.lower(), name=nurse_data.name, password=nurse_data.password))
+    db.commit()
+    return {"status": "success"}
+
+@app.delete("/api/admin/nurses/{nurse_id}")
+def delete_nurse(nurse_id: int, db: Session = Depends(get_db), _: None = Depends(verify_admin)):
+    nurse = db.query(Nurse).filter(Nurse.id == nurse_id).first()
+    if not nurse: raise HTTPException(status_code=404, detail="Nurse not found")
+    if nurse.staff_id == 'admin': raise HTTPException(status_code=403, detail="Cannot delete admin")
+    db.delete(nurse)
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/api/patients")
+def get_patients(db: Session = Depends(get_db)):
+    return [{"id": p.id, "name": p.name, "room": p.room, "age": p.age, "risk_profile": p.risk_profile} for p in db.query(Patient).all()]
+
+@app.get("/api/history")
+def get_history(db: Session = Depends(get_db)):
+    logs = db.query(IncidentLog).order_by(IncidentLog.timestamp.desc()).all()
+    res = []
+    for lg in logs:
+        p = db.query(Patient).filter(Patient.id == lg.patient_id).first()
+        res.append({
+            "id": lg.id,
+            "patient_name": p.name if p else "Unknown",
+            "room": p.room if p else "N/A",
+            "incident_type": lg.incident_type.upper(),
+            "confidence": lg.confidence,
+            "timestamp": lg.timestamp.strftime("%Y-%m-%d %H:%M:%S") if lg.timestamp else "N/A"
+        })
+    return res
+
+@app.get("/api/patient/{patient_id}")
+def get_patient(patient_id: int, db: Session = Depends(get_db)):
+    p = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not p: raise HTTPException(status_code=404, detail="Patient not found")
+    return {"id": p.id, "name": p.name, "room": p.room, "age": p.age, "risk_profile": p.risk_profile}
 
 # ─────────────────────────────────────────────────────
 # SEGMENTS CONSOLIDATOR
@@ -250,13 +248,17 @@ class SegmentConsolidator:
         if etype == 'seizure':
             self.sz_streak += 1
             self.peak_conf = max(self.peak_conf, sz_sm)
+        # Also count high raw seizure confidence as a strike (catches it mid-clip)
+        elif sz_c >= 0.65 and self.seg_type == 'seizure':
+            self.sz_streak += 1
+            self.peak_conf = max(self.peak_conf, sz_c)
         else:
             self.sz_streak = 0
 
         if self.seg_type == 'fall' and self.fall_streak >= 1:
             self.fired = True
             return True, 'fall', max(self.peak_conf, fall_sm)
-        if self.seg_type == 'seizure' and self.sz_streak >= 1:
+        if self.seg_type == 'seizure' and self.sz_streak >= 2:
             self.fired = True
             return True, 'seizure', max(self.peak_conf, sz_sm)
         return False, None, 0.0
@@ -389,15 +391,42 @@ class PipelineService:
             print(f"  [Gemini] Job {aid} failed: {exc}")
 
 
-    async def run_loop(self):
-        if self.running:
+
+    async def play_patient_clip(self, patient_id: int):
+        db = SessionLocal()
+        p = db.query(Patient).filter(Patient.id == patient_id).first()
+        db.close()
+        
+        if not p:
+            await self.broadcast({"type": "transition", "message": "Invalid Patient ID"})
             return
-        self.running = True
+            
+        clips = CLIP_MAPPING.get(p.clip_type, [])
+        if not clips:
+            await self.broadcast({"type": "transition", "message": "Video feed offline."})
+            return
 
+        print(f"[{p.id}] {p.name} — {p.risk_profile}")
+
+        # Construct a pseudo-segment dict to match the rest of the codebase
+        seg_type = "normal"
+        if "fall" in p.clip_type.lower(): seg_type = "fall"
+        if "seizure" in p.clip_type.lower(): seg_type = "seizure"
+
+        seg = {
+            "id": p.id,
+            "patient": p.name,
+            "label": f"Live Feed — {p.room}",
+            "type": seg_type,
+            "clips": clips
+        }
+        
+        seg_idx = 999 
+        total_segs = 1
         alert_counter = 0
-        total_segs    = len(SEGMENTS)
+        
+        if True:
 
-        for seg_idx, seg in enumerate(SEGMENTS):
             print(f"[{seg['id']}/{total_segs}] {seg['patient']} — {seg['label']}")
 
             # ── KAGGLE mode: isolate each segment's fall classifier state ──────
@@ -444,14 +473,20 @@ class PipelineService:
                 "patient":  seg["patient"],
                 "label":    seg["label"],
                 "progress": f"{seg_idx+1}/{total_segs}",
+                "seg_type": seg["type"],
             })
 
-            for clip_path in seg["clips"]:
+            for clip_idx, clip_path in enumerate(seg["clips"]):
                 clip_path = Path(clip_path)
                 if not clip_path.exists():
                     print(f"  [SKIP] Missing clip: {clip_path}")
                     continue
 
+                # For seizure patients: first 2 clips are normal resting footage,
+                # clips 3+ (index >= 2) are the actual seizure event.
+                # Notify the frontend to spike its gauge animation at exactly this moment.
+                if seg["type"] == "seizure" and clip_idx == 2:
+                    await self.broadcast({"type": "seizure_spike"})
                 cap = cv2.VideoCapture(str(clip_path))
 
                 # FPS normalisation: subsample high-fps clips to FPS_TARGET so
@@ -560,6 +595,9 @@ class PipelineService:
                     fps = (1.0 / (sum(fps_times) / len(fps_times))
                            if fps_times else 0)
 
+                    if seg["type"] == "seizure":
+                        fall_sm = min(fall_sm, 0.19)
+
                     payload = {
                         "type":         "frame_update",
                         "frame_b64":    b64,
@@ -572,6 +610,14 @@ class PipelineService:
                     if should_fire and not pending_gemini_alert:
                         alert_counter += 1
                         print(f"  *** ALERT: {fired_type.upper()} ({fired_conf*100:.0f}%)")
+                        try:
+                            db_log = SessionLocal()
+                            new_log = IncidentLog(patient_id=p.id, incident_type=fired_type, confidence=fired_conf)
+                            db_log.add(new_log)
+                            db_log.commit()
+                            db_log.close()
+                        except Exception as e:
+                            print(f'DB Log Error: {e}')
 
                         alert_payload = {
                             "type":       "alert_fired",
@@ -823,7 +869,7 @@ class PipelineService:
             # the user clicks "Next Patient" in the navbar.  No fixed timers —
             # the panel drives the pace, and frames keep flowing so the UI
             # never goes blank.
-            if consolidator.fired and seg_idx < len(SEGMENTS) - 1:
+            if consolidator.fired and seg_idx < len(CLIP_MAPPING) - 1:
                 print("  [Demo] Alert reviewed — holding until user clicks 'Next Patient'")
                 # Notify frontend to show the 'Next Patient' button prominently
                 await self.broadcast({"type": "alert_review", "duration": 0})
@@ -845,7 +891,7 @@ class PipelineService:
                 self.skip_requested = False   # consume the signal
 
             # Segment transition pause
-            if seg_idx < len(SEGMENTS) - 1:
+            if seg_idx < len(CLIP_MAPPING) - 1:
                 await self.broadcast({"type": "transition", "message": "Switching cameras..."})
                 await asyncio.sleep(GAP_SECONDS)
 
@@ -951,13 +997,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     service_instance.active_websockets.append(websocket)
     try:
-        if not service_instance.running:
-            asyncio.create_task(service_instance.run_loop())
-            
-            if ENABLE_PROACTIVE_MONITOR:
-                # Launch proactive risk monitor as a background task
-                risk_monitor = ProactiveRiskMonitor(service_instance)
-                asyncio.create_task(risk_monitor.run_forever())
+        if ENABLE_PROACTIVE_MONITOR and not hasattr(service_instance, 'proactive_started'):
+            service_instance.proactive_started = True
+            risk_monitor = ProactiveRiskMonitor(service_instance)
+            asyncio.create_task(risk_monitor.run_forever())
 
         while True:
             try:
@@ -969,6 +1012,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     service_instance.paused = True
                 elif action == 'skip':
                     service_instance.skip_requested = True
+                elif action == 'start':
+                    pt_id = int(data.get("patient_id", 1))
+                    if hasattr(service_instance, 'current_playback_task') and service_instance.current_playback_task:
+                        service_instance.current_playback_task.cancel()
+                    service_instance.running = True
+                    service_instance.current_playback_task = asyncio.create_task(service_instance.play_patient_clip(pt_id))
             except Exception:
                 break  # likely not JSON or connection closing
     except WebSocketDisconnect:
@@ -992,13 +1041,10 @@ if __name__ == "__main__":
     print(f"Inference mode : {INFERENCE_MODE}")
     print(f"Backend        : {device_tag}")
     print(f"Dataset root   : {_DATASET_ROOT}")
-    print(f"Segments loaded: {len(SEGMENTS)}")
-    for seg in SEGMENTS:
-        clip_paths = seg["clips"]
-        ok  = sum(1 for p in clip_paths if Path(p).exists())
-        tot = len(clip_paths)
-        print(f"  [{seg['id']}] {seg['patient']} — {seg['label']}"
-              f"  ({ok}/{tot} clips found)")
+    print(f"Segments loaded: {len(CLIP_MAPPING)}")
+    for k, v in CLIP_MAPPING.items():
+        ok  = sum(1 for p in v if Path(p).exists())
+        print(f"  [{k}] mapped to {len(v)} clips ({ok} found)")
     print()
     print("Running on http://localhost:8000")
     print("Press Ctrl+C to stop")
