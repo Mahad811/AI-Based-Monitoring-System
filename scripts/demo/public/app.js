@@ -252,28 +252,22 @@ function bumpAudio() {
 
 function startAudioAlarm() {
   bumpAudio();
-  if (alertInterval) return;
-  alertInterval = setInterval(() => {
-    if(alertAudioCtx.state === 'suspended') alertAudioCtx.resume();
-    const osc = alertAudioCtx.createOscillator();
-    const gain = alertAudioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(alertAudioCtx.destination);
-    osc.frequency.setValueAtTime(880, alertAudioCtx.currentTime); 
-    osc.frequency.exponentialRampToValueAtTime(440, alertAudioCtx.currentTime + 0.3); 
-    osc.start();
-    
-    gain.gain.setValueAtTime(0.3, alertAudioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, alertAudioCtx.currentTime + 0.3);
-    osc.stop(alertAudioCtx.currentTime + 0.3);
-  }, 800);
+  if(alertAudioCtx.state === 'suspended') alertAudioCtx.resume();
+  const osc = alertAudioCtx.createOscillator();
+  const gain = alertAudioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(alertAudioCtx.destination);
+  osc.frequency.setValueAtTime(880, alertAudioCtx.currentTime); 
+  osc.frequency.exponentialRampToValueAtTime(440, alertAudioCtx.currentTime + 0.3); 
+  osc.start();
+  
+  gain.gain.setValueAtTime(0.3, alertAudioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, alertAudioCtx.currentTime + 0.3);
+  osc.stop(alertAudioCtx.currentTime + 0.3);
 }
 
 function stopAudioAlarm() {
-  if (alertInterval) {
-    clearInterval(alertInterval);
-    alertInterval = null;
-  }
+  // Not needed, alarm only plays once now
 }
 
 /* ── WebSocket ── */
@@ -295,6 +289,7 @@ ws.onmessage = e => {
   else if (d.type === 'transition')    onTransition(d);
   else if (d.type === 'seizure_spike') { szSimSpike(); }
   else if (d.type === 'frame_update')  onFrame(d);
+  else if (d.type === 'audio_alert')   onAudioAlert(d);
   else if (d.type === 'gemini_tier2')  onT2(d);
   else if (d.type === 'gemini_report') onReport(d);
   else if (d.type === 'alert_review') onReview(d);
@@ -404,6 +399,9 @@ function onReport(d) {
   if (!ok) {
     const c = $('ac-' + d.alert_id);
     if (c) { c.style.opacity='0.5'; c.style.borderLeftColor='#4b5a72'; c.querySelector('.ac-type').style.color='#4b5a72'; }
+  } else {
+    // Clinically validated High LLM Alert -> Fire the physical audible siren!
+    startAudioAlarm();
   }
 
   showGem('result');
@@ -533,7 +531,7 @@ function fireAlert(a) {
   if (type === 'seizure') szSimSpike();
   else fallSimSpike();
   
-  startAudioAlarm();
+  // Auditory Siren moved to LLM Validation output to prevent false-alarm fatigue
 
   /* #9 — Avatar alert color */
   pAv.className = 'p-avatar ' + (type === 'seizure' ? 'av-seizure' : 'av-fall');
@@ -568,6 +566,49 @@ function fireAlert(a) {
 function rmCard(id) {
   const c = $(id); if (c) c.remove();
   if (!logFeed.querySelector('.ac')) logEmpty.style.display = '';
+}
+
+/* ── Audio Alerts ── */
+function onAudioAlert(a) {
+  const { alert_id, event_type: type, sound_type: sound, confidence: conf, timestamp: ts } = a;
+  const id = alert_id;
+  
+  totalAlerts++;
+  sStats.detected++;
+  alertToday.textContent = totalAlerts;
+  alertCount.textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'');
+  logEmpty.style.display = 'none';
+
+  // Auditory Siren moved to LLM Validation output to prevent false-alarm fatigue
+
+  /* Sidebar shake */
+  sidebar.classList.remove('shaking');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('shaking');
+  setTimeout(() => sidebar.classList.remove('shaking'), 400);
+
+  const card = document.createElement('div');
+  card.id = 'ac-' + id;
+  card.className = 'ac';
+  card.style.borderLeftColor = '#8b5cf6';
+  card.style.background = 'rgba(139, 92, 246, 0.1)';
+  
+  card.innerHTML = `
+    <div class="ac-top">
+      <div>
+        <div class="ac-type" style="color: #a78bfa;">🎙 AUDIO ALERT: ${type.toUpperCase()}</div>
+        <div class="ac-conf">Detected Sound: <span style="color:#fff; font-weight:bold;">${sound}</span> (Conf: ${Math.round(conf*100)}%)</div>
+      </div>
+      <div class="ac-r">
+        <span class="ac-time">${ts}</span>
+        <button class="ac-x" style="color:#a78bfa" onclick="rmCard('ac-${id}')">×</button>
+      </div>
+    </div>
+    <div class="ac-gem thinking" id="mini-${id}" style="margin-top:8px;">
+      <div class="mpulse"></div>
+      <span>Cognitive Core tracking context…</span>
+    </div>`;
+  logFeed.insertBefore(card, logFeed.firstChild);
 }
 
 /* ── Gauges ── */

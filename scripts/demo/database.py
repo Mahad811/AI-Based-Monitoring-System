@@ -45,15 +45,35 @@ def init_db():
     # Seed 5 Patients
     if not db.query(Patient).first():
         patients = [
-            Patient(name="Richard Hendricks", room="ICU-302A", age=79, risk_profile="High Fall Risk", clip_type="fall_1"),
-            Patient(name="Martha Stewart", room="ICU-304B", age=82, risk_profile="High Fall Risk", clip_type="fall_2"),
-            Patient(name="John Watson", room="ICU-101A", age=48, risk_profile="Stable", clip_type="normal_1"),
-            Patient(name="Sarah Palmer", room="ICU-205C", age=35, risk_profile="Epilepsy Protocol", clip_type="seizure_1"),
-            Patient(name="David Miller", room="ICU-206C", age=42, risk_profile="Epilepsy Protocol", clip_type="seizure_2")
+            Patient(name="Richard Davis", room="ICU-107", age=72, risk_profile="High-Risk Mobility / Frequent Falls", clip_type="fall_1"),
+            Patient(name="Martha Kent", room="ICU-112", age=68, risk_profile="Rehab / Monitored Rest", clip_type="normal_1"),
+            Patient(name="John Smith", room="ICU-105", age=81, risk_profile="Post-Op Orthopedic Care", clip_type="fall_2"),
+            Patient(name="Sarah Connor", room="ICU-204B", age=45, risk_profile="Epilepsy Protocol", clip_type="seizure_1"),
+            Patient(name="David Miller", room="ICU-206C", age=50, risk_profile="Epilepsy Protocol", clip_type="seizure_2"),
+            Patient(name="Aisha Malik", room="PED-WC01", age=8, risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"),
+            Patient(name="Zainab Tariq", room="ISO-AS02", age=25, risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video")
         ]
         db.bulk_save_objects(patients)
         
-    db.commit()
+        # Seed 1 Admin
+        db.add(Nurse(staff_id="admin", name="System Admin", password="admin"))
+        db.add(Nurse(staff_id="nurse1", name="Alice Wonderland", password="securepassword"))
+        db.commit()
+    else:
+        # Check if custom patient exists dynamically to fix missing cards
+        custom_wc = db.query(Patient).filter_by(clip_type="whooping_cough_video").first()
+        if not custom_wc:
+            db.add(Patient(name="Aisha Malik", room="PED-WC01", age=8, risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"))
+            
+        custom_as = db.query(Patient).filter_by(clip_type="asthma_attack_video").first()
+        if not custom_as:
+            db.add(Patient(name="Zainab Tariq", room="ISO-AS02", age=25, risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video"))
+
+        live = db.query(Patient).filter_by(clip_type="live_feed").first()
+        if not live:
+            db.add(Patient(name="LIVE HARDWARE FEED", room="ICU-LIVE", age=0, risk_profile="Edge Mode: WebCam + Mic", clip_type="live_feed"))
+        
+        db.commit()
     db.close()
 
 def get_db():

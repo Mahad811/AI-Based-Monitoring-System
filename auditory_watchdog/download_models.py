@@ -1,6 +1,6 @@
 import os
 import logging
-from config import MODELS_DIR
+from auditory_watchdog.config import MODELS_DIR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ def predownload_all_models():
     # 1. YAMNet (TF Hub)
     logger.info("--- 1. Downloading YAMNet (Distress Classifier) ---")
     import tensorflow_hub as hub
-    from config import YAMNET_MODEL_HANDLE
+    from auditory_watchdog.config import YAMNET_MODEL_HANDLE
     logger.info(f"Fetching from {YAMNET_MODEL_HANDLE} into {os.environ.get('TFHUB_CACHE_DIR')}")
     hub.load(YAMNET_MODEL_HANDLE)
     logger.info("YAMNet downloaded successfully.\n")
@@ -26,8 +26,8 @@ def predownload_all_models():
     
     # 3. Faster-Whisper (HuggingFace/CTranslate2)
     logger.info("--- 3. Downloading Faster-Whisper (Speech Transcriber) ---")
-    from core.keyword_spotter import KeywordSpotter
-    from config import WHISPER_DOWNLOAD_ROOT
+    from auditory_watchdog.core.keyword_spotter import KeywordSpotter
+    from auditory_watchdog.config import WHISPER_DOWNLOAD_ROOT
     logger.info(f"Fetching into {WHISPER_DOWNLOAD_ROOT}")
     # Initializing the class triggers the download
     KeywordSpotter()

@@ -102,13 +102,31 @@ class DistressClassifier:
                 # Sort by confidence
                 detected_distress.sort(key=lambda x: x['confidence'], reverse=True)
                 primary_sound = detected_distress[0]['sound']
-                logger.warning(f"Distress Audio Detected: {primary_sound} (Confidence: {detected_distress[0]['confidence']:.2f})")
+                
+                # SEVERITY TAXONOMY
+                severity_score = 1 # default Baseline (breathing)
+                sound_lower = primary_sound.lower()
+                if any(x in sound_lower for x in ["scream", "gasp", "chok", "yell"]):
+                    severity_score = 10
+                    severity_tier = 3
+                elif any(x in sound_lower for x in ["wheez", "cry", "groan", "moan", "sob", "pant"]):
+                    severity_score = 5
+                    severity_tier = 2
+                elif any(x in sound_lower for x in ["cough", "throat", "sniff", "sneeze"]):
+                    severity_score = 2
+                    severity_tier = 1
+                else:
+                    severity_tier = 0 # Baseline Normal Breathing
+
+                logger.warning(f"Distress Audio Detected: {primary_sound} (Confidence: {detected_distress[0]['confidence']:.2f}, Score: {severity_score})")
                 
                 return {
                     "event_detected": True,
                     "event_type": "Preverbal_Distress",
                     "details": detected_distress,
-                    "primary_sound": primary_sound
+                    "primary_sound": primary_sound,
+                    "severity_score": severity_score,
+                    "severity_tier": severity_tier
                 }
 
             return {"event_detected": False, "reason": f"No distress crossed threshold. Top non-distress sound: {top_class_name} ({top_score:.2f})"}
