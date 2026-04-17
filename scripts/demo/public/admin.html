@@ -3,74 +3,228 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vital Guardian — Staff Roster</title>
+<title>Vital Guardian — Command Center</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vg-ui.css">
 <link rel="stylesheet" href="admin.css">
 <script>
-    if (!localStorage.getItem('vg_token')) {
-        window.location.href = '/static/login.html';
-    } else if (localStorage.getItem('vg_staff_id') !== 'admin') {
-        alert("Access Denied: Administrator privileges required.");
-        window.location.href = '/static/index.html';
-    }
+  if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';
+  else if (localStorage.getItem('vg_staff_id') !== 'admin') {
+    window.location.href = '/static/hub.html';
+  }
 </script>
 </head>
 <body>
-    <div id="navbar">
-        <div class="logo-area">
-            <div class="pdot"></div>
-            <div class="logo-txt">
-                <span class="logo-brand">VITAL GUARDIAN</span>
-                <span class="logo-sub">Staff Management System</span>
-            </div>
-        </div>
-        <div class="nav-right">
-            <a href="/static/index.html" class="btn-ui">🔙 Back to ICU Dashboard</a>
-        </div>
+
+<!-- ═══════════ LAYOUT SHELL ═══════════ -->
+<div id="admin-shell">
+
+  <!-- LEFT SIDEBAR -->
+  <aside id="admin-sidebar">
+    <div class="sb-brand">
+      <div class="pdot"></div>
+      <div>
+        <div class="logo-brand">VITAL GUARDIAN</div>
+        <div class="logo-sub">Command Center</div>
+      </div>
     </div>
 
-    <div class="admin-container">
-        <!-- New Nurse panel -->
-        <div class="glass-card add-card">
-            <h2>Add New Staff</h2>
-            <form id="add-nurse-form">
-                <div class="input-group">
-                    <label>Staff ID</label>
-                    <input type="text" id="add-id" placeholder="e.g. NURS-303" required autocomplete="off">
-                </div>
-                <div class="input-group">
-                    <label>Full Name</label>
-                    <input type="text" id="add-name" placeholder="Jane Doe" required autocomplete="off">
-                </div>
-                <div class="input-group">
-                    <label>Security Key</label>
-                    <input type="password" id="add-pass" required>
-                </div>
-                <button type="submit" class="btn-primary">Register Staff</button>
-            </form>
-        </div>
+    <nav class="sb-nav">
+      <button class="sb-tab active" data-tab="command">
+        <span class="sb-icon">⚡</span> Command Center
+      </button>
+      <button class="sb-tab" data-tab="roster">
+        <span class="sb-icon">👥</span> Staff Roster
+      </button>
+      <button class="sb-tab" data-tab="audit">
+        <span class="sb-icon">📋</span> Activity Log
+      </button>
+    </nav>
 
-        <!-- Roster Table -->
-        <div class="glass-card table-card">
-            <h2>Active PostgreSQL Roster</h2>
-            <div class="table-wrapper">
-                <table id="roster-table">
-                    <thead>
-                        <tr>
-                            <th>Internal DB ID</th>
-                            <th>Staff ID</th>
-                            <th>Full Name</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="roster-body">
-                        <!-- Populated dynamically by Postgres backend -->
-                    </tbody>
-                </table>
-            </div>
+    <div class="sb-footer">
+      <div id="sb-nurse-info">
+        <div id="sb-avatar" class="vg-avatar" style="width:36px;height:36px;font-size:0.85rem;"></div>
+        <div>
+          <div id="sb-nurse-name" style="font-size:0.82rem;font-weight:700;"></div>
+          <div id="sb-nurse-role" style="font-size:0.68rem;color:var(--vg-muted);margin-top:1px;"></div>
         </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:12px;">
+        <a href="/static/hub.html" class="vg-btn vg-btn-sm" style="text-decoration:none;justify-content:center;">🔙 Back to Hub</a>
+        <button onclick="doLogout()" class="vg-btn vg-btn-sm" style="color:var(--vg-red);border-color:rgba(239,68,68,0.3);">Logout</button>
+      </div>
     </div>
+  </aside>
 
-    <script src="admin.js"></script>
+  <!-- MAIN CONTENT -->
+  <main id="admin-main">
+
+    <!-- ═══ TAB: COMMAND CENTER ═══ -->
+    <section id="tab-command" class="admin-tab active">
+      <div class="tab-header">
+        <h1>Command Center</h1>
+        <p>Live overview of the ICU ward and AI monitoring pipeline.</p>
+      </div>
+
+      <!-- Stat tiles row -->
+      <div class="stats-row" id="cc-stats">
+        <div class="vg-stat-tile vg-skeleton vg-skeleton-card" id="tile-patients"></div>
+        <div class="vg-stat-tile vg-skeleton vg-skeleton-card" id="tile-alerts"></div>
+        <div class="vg-stat-tile vg-skeleton vg-skeleton-card" id="tile-staff"></div>
+        <div class="vg-stat-tile vg-skeleton vg-skeleton-card" id="tile-verify"></div>
+      </div>
+
+      <!-- Sparkline + Health -->
+      <div class="cc-mid-row">
+        <div class="glass-card" style="flex:1.4;min-width:0;">
+          <div class="card-header">
+            <span class="card-title">Incidents — Last 24 Hours</span>
+            <span id="cc-total-today" style="font-size:0.75rem;color:var(--vg-muted);"></span>
+          </div>
+          <div class="vg-sparkline-wrap" style="padding:8px 0;">
+            <canvas id="cc-sparkline" height="70"></canvas>
+          </div>
+          <div class="spark-hours" id="spark-hours"></div>
+        </div>
+
+        <div class="glass-card" style="flex:1;min-width:220px;">
+          <div class="card-header"><span class="card-title">System Health</span>
+            <button class="vg-btn vg-btn-sm" onclick="refreshHealth()" title="Refresh">↻</button>
+          </div>
+          <div id="cc-health-strip" class="vg-health-strip" style="flex-direction:column;gap:12px;margin-top:6px;">
+            <div class="vg-skeleton" style="height:18px;border-radius:4px;"></div>
+            <div class="vg-skeleton" style="height:18px;border-radius:4px;"></div>
+            <div class="vg-skeleton" style="height:18px;border-radius:4px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="glass-card" style="margin-top:20px;">
+        <div class="card-header">
+          <span class="card-title">Recent Activity</span>
+          <a href="#audit" class="vg-btn vg-btn-sm sb-tab-link" data-tab="audit">View All →</a>
+        </div>
+        <div id="cc-activity" class="vg-activity-feed">
+          <div class="vg-skeleton vg-skeleton-row"></div>
+          <div class="vg-skeleton vg-skeleton-row"></div>
+          <div class="vg-skeleton vg-skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ TAB: STAFF ROSTER ═══ -->
+    <section id="tab-roster" class="admin-tab">
+      <div class="tab-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h1>Staff Roster</h1>
+          <p>Manage ICU nursing team profiles and shift assignments.</p>
+        </div>
+        <button class="vg-btn vg-btn-primary" onclick="openAddModal()">+ Add Staff</button>
+      </div>
+
+      <div id="roster-grid" class="roster-grid">
+        <div class="vg-skeleton vg-skeleton-card"></div>
+        <div class="vg-skeleton vg-skeleton-card"></div>
+        <div class="vg-skeleton vg-skeleton-card"></div>
+      </div>
+    </section>
+
+    <!-- ═══ TAB: ACTIVITY LOG ═══ -->
+    <section id="tab-audit" class="admin-tab">
+      <div class="tab-header">
+        <h1>Activity Log</h1>
+        <p>Full audit trail of all system and staff actions.</p>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="vg-filter-bar">
+        <button class="vg-filter-chip active" data-action="all" onclick="setAuditFilter(this,'all')">All</button>
+        <button class="vg-filter-chip" data-action="LOGIN" onclick="setAuditFilter(this,'LOGIN')">Logins</button>
+        <button class="vg-filter-chip" data-action="NURSE" onclick="setAuditFilter(this,'NURSE')">Staff</button>
+        <button class="vg-filter-chip" data-action="ALERT" onclick="setAuditFilter(this,'ALERT')">Alerts</button>
+        <div class="vg-filter-sep"></div>
+        <select id="audit-actor-filter" class="vg-filter-input" onchange="loadAudit(0)" style="min-width:140px;">
+          <option value="">All Users</option>
+        </select>
+      </div>
+
+      <div id="audit-feed" class="vg-activity-feed">
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+      </div>
+      <div id="audit-loadmore" style="text-align:center;padding:16px;display:none;">
+        <button class="vg-btn" onclick="loadMoreAudit()">Load More</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══ ADD / EDIT STAFF MODAL ═══ -->
+<div id="nurse-modal-backdrop" class="vg-modal-backdrop" style="display:none;" onclick="handleModalBackdropClick(event)">
+  <div class="vg-modal" style="width:520px;" onclick="event.stopPropagation()">
+    <div class="vg-modal-title" id="nurse-modal-title">Add New Staff</div>
+    <div style="max-height:70vh;overflow-y:auto;margin-top:16px;padding-right:4px;">
+      <input type="hidden" id="nurse-edit-id">
+      <div class="vg-input-row">
+        <div class="vg-input-group">
+          <label>Staff ID *</label>
+          <input type="text" id="nf-staffid" placeholder="e.g. nurse2" autocomplete="off">
+        </div>
+        <div class="vg-input-group">
+          <label>Full Name *</label>
+          <input type="text" id="nf-name" placeholder="Jane Doe" autocomplete="off">
+        </div>
+      </div>
+      <div class="vg-input-group">
+        <label>Password *</label>
+        <input type="password" id="nf-password" placeholder="Leave blank to keep current (edit mode)">
+      </div>
+      <div class="vg-input-row">
+        <div class="vg-input-group">
+          <label>Role</label>
+          <select id="nf-role">
+            <option>Nurse</option>
+            <option>ICU Lead</option>
+            <option>Observer</option>
+            <option>Admin</option>
+          </select>
+        </div>
+        <div class="vg-input-group">
+          <label>Shift</label>
+          <select id="nf-shift">
+            <option>Morning</option>
+            <option>Evening</option>
+            <option>Night</option>
+          </select>
+        </div>
+      </div>
+      <div class="vg-input-row">
+        <div class="vg-input-group">
+          <label>Ward Assignment</label>
+          <input type="text" id="nf-ward" placeholder="e.g. ICU East">
+        </div>
+        <div class="vg-input-group">
+          <label>Status</label>
+          <select id="nf-status">
+            <option value="on-duty">On Duty</option>
+            <option value="on-break">On Break</option>
+            <option value="off-duty" selected>Off Duty</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="vg-modal-actions" style="margin-top:20px;">
+      <button class="vg-btn" onclick="closeNurseModal()">Cancel</button>
+      <button class="vg-btn vg-btn-primary" onclick="submitNurseForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="vg-ui.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>

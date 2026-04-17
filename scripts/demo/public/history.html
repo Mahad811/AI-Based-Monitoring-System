@@ -3,82 +3,303 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vital Guardian — Incident Logs</title>
+<title>Vital Guardian — Incident Log</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vg-ui.css">
 <link rel="stylesheet" href="admin.css">
+<style>
+/* ── Page layout ── */
+body { display: flex; flex-direction: column; min-height: 100vh; }
+#history-main { flex: 1; max-width: 1280px; width: 100%; margin: 0 auto; padding: 28px 28px 48px; }
+
+/* ── Stat strip ── */
+.hist-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 22px; }
+@media(max-width:800px){ .hist-stats { grid-template-columns: repeat(2,1fr); } }
+
+/* ── Table ── */
+.inc-table-wrap { overflow-x: auto; }
+.inc-table { width: 100%; border-collapse: collapse; }
+.inc-table th {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--vg-muted); padding: 10px 14px;
+  border-bottom: 1px solid var(--vg-border); font-weight: 700; white-space: nowrap;
+}
+.inc-table td {
+  padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 0.86rem; vertical-align: middle;
+}
+.inc-table tr { cursor: pointer; transition: background 0.15s; border-left: 3px solid transparent; }
+.inc-table tr:hover td { background: rgba(255,255,255,0.025); }
+.inc-table tr.sev-critical { border-left: 3px solid var(--vg-red);    }
+.inc-table tr.sev-high     { border-left: 3px solid var(--vg-orange); }
+.inc-table tr.sev-moderate { border-left: 3px solid var(--vg-gold);   }
+.inc-table tr.sev-low      { border-left: 3px solid var(--vg-green);  }
+.inc-table tr.sev-unknown  { border-left: 3px solid var(--vg-border); }
+
+.inc-conf-bar { 
+  display: flex; align-items: center; gap: 8px;
+}
+.inc-conf-fill {
+  height: 4px; border-radius: 2px; background: var(--vg-gold);
+  min-width: 2px;
+}
+.conf-seizure .inc-conf-fill { background: var(--vg-purple); }
+.conf-fall    .inc-conf-fill { background: var(--vg-red);    }
+
+/* ── Empty state ── */
+.inc-empty {
+  text-align: center; padding: 60px 20px;
+  color: var(--vg-muted);
+}
+.inc-empty .ei { font-size: 2.5rem; display: block; margin-bottom: 12px; }
+
+/* ── Drawer content ── */
+.drawer-patient-header {
+  background: rgba(255,255,255,0.04); border-radius: 8px; padding: 16px;
+  margin-bottom: 18px; border: 1px solid var(--vg-border);
+}
+.drawer-section { margin-bottom: 20px; }
+.drawer-section-title {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--vg-muted); margin-bottom: 8px;
+}
+.drawer-narrative {
+  font-size: 0.84rem; color: var(--vg-text); line-height: 1.7;
+  background: rgba(0,0,0,0.25); padding: 14px; border-radius: 6px;
+  border-left: 3px solid var(--vg-gold);
+}
+.drawer-actions-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.drawer-actions-list li {
+  font-size: 0.82rem; padding: 8px 12px;
+  background: rgba(52,211,153,0.05); border: 1px solid rgba(52,211,153,0.12);
+  border-radius: 5px; color: var(--vg-text);
+}
+.drawer-actions-list li::before { content: '→ '; color: var(--vg-green); }
+.drawer-footer { border-top: 1px solid var(--vg-border); padding-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── Confidence slider label ── */
+#conf-val { min-width: 30px; font-size:0.78rem; color:var(--vg-gold); font-family:'JetBrains Mono',monospace; }
+</style>
 <script>
-    if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';
+  if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';
 </script>
 </head>
 <body>
-    <div id="navbar">
-        <div class="logo-area">
-            <div class="pdot"></div>
-            <div class="logo-txt">
-                <span class="logo-brand">VITAL GUARDIAN</span>
-                <span class="logo-sub">Clinical Log History</span>
-            </div>
-        </div>
-        <div class="nav-right">
-            <a href="/static/hub.html" class="btn-ui">🔙 Back to Hub</a>
-        </div>
-    </div>
 
-    <div style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
-        <div class="glass-card table-card" style="width: 100%; box-sizing: border-box;">
-            <h2>AI Verified Incidents</h2>
-            <div class="table-wrapper">
-                <table id="roster-table">
-                    <thead>
-                        <tr>
-                            <th>Log ID</th>
-                            <th>Timestamp</th>
-                            <th>Patient Name</th>
-                            <th>Location</th>
-                            <th>Event Type</th>
-                            <th>Confidence</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body">
-                        <!-- Loaded by JS -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<!-- NAVBAR -->
+<div id="navbar">
+  <div class="logo-area">
+    <div class="pdot"></div>
+    <div class="logo-txt">
+      <span class="logo-brand">VITAL GUARDIAN</span>
+      <span class="logo-sub">Clinical Incident Log</span>
     </div>
+  </div>
+  <div class="nav-right" style="display:flex;align-items:center;gap:10px;">
+    <span id="nav-nurse" style="font-size:0.78rem;color:var(--vg-muted);"></span>
+    <button class="btn-ui" onclick="window.location.href='/static/hub.html'">🔙 Back to Hub</button>
+  </div>
+</div>
 
-    <script>
-        async function loadHistory() {
-            try {
-                const res = await fetch('/api/history');
-                const data = await res.json();
-                
-                const tbody = document.getElementById('history-body');
-                tbody.innerHTML = '';
-                
-                data.forEach(log => {
-                    const cColor = log.incident_type === 'fall' ? '#ef4444' : '#dca54c';
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="color:#8b9ab7;">#${log.id}</td>
-                        <td style="font-family:'JetBrains Mono';">${log.timestamp}</td>
-                        <td style="font-weight:700;">${log.patient_name}</td>
-                        <td>${log.room}</td>
-                        <td style="color:${cColor}; font-weight:800; text-transform: uppercase;">[ ${log.incident_type} ]</td>
-                        <td>${(log.confidence * 100).toFixed(1)}%</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-                
-                if (data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:#8b9ab7;">No incidents recorded in the database yet.</td></tr>`;
-                }
-            } catch (e) {
-                console.error(e);
-            }
-        }
-        
-        loadHistory();
-    </script>
+<!-- MAIN -->
+<div id="history-main">
+
+  <!-- Stat strip -->
+  <div class="hist-stats" id="hist-stats">
+    <div class="vg-stat-tile vg-skeleton vg-skeleton-card"></div>
+    <div class="vg-stat-tile vg-skeleton vg-skeleton-card"></div>
+    <div class="vg-stat-tile vg-skeleton vg-skeleton-card"></div>
+    <div class="vg-stat-tile vg-skeleton vg-skeleton-card"></div>
+  </div>
+
+
+  <!-- Table card -->
+  <div class="glass-card" style="padding:0;overflow:hidden;">
+    <div class="inc-table-wrap" id="table-wrap">
+      <div style="padding:30px;">
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+        <div class="vg-skeleton vg-skeleton-row"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- DETAIL DRAWER -->
+<div id="drawer-backdrop" class="vg-drawer-backdrop" onclick="closeDrawer()"></div>
+<div id="incident-drawer" class="vg-drawer">
+  <button class="vg-drawer-close" onclick="closeDrawer()">×</button>
+  <div id="drawer-content">
+    <div class="vg-skeleton vg-skeleton-card" style="margin-bottom:16px;"></div>
+    <div class="vg-skeleton" style="height:80px;"></div>
+  </div>
+</div>
+
+<script src="vg-ui.js"></script>
+<script>
+'use strict';
+let _allLogs = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const nameEl = document.getElementById('nav-nurse');
+  if (nameEl) nameEl.textContent = localStorage.getItem('vg_nurse_name') || '';
+  await loadHistory();
+});
+
+async function loadHistory() {
+  try {
+    _allLogs = await VG.fetchJSON('/api/history');
+    computeStats(_allLogs);
+    renderTable(_allLogs);
+  } catch (_) {}
+}
+
+function computeStats(logs) {
+  const strip = document.getElementById('hist-stats');
+  if (!strip) return;
+  const total      = logs.length;
+  const confirmed  = logs.filter(l => l.severity && l.severity !== 'unknown').length;
+  const suppressed = 0; // derived from Gemini report — use narrative check
+  const falls      = logs.filter(l => l.incident_type === 'FALL').length;
+  const seizures   = logs.filter(l => l.incident_type === 'SEIZURE').length;
+
+  const confs = logs.map(l => l.confidence || 0).filter(v => v > 0);
+  const avgConf = confs.length ? Math.round((confs.reduce((a,b)=>a+b,0)/confs.length)*100) : 0;
+
+  strip.innerHTML = `
+    <div class="vg-stat-tile">
+      <div class="vg-stat-label">Total Incidents</div>
+      <div class="vg-stat-value vg-stat-red">${total}</div>
+      <div class="vg-stat-sub">${falls} fall · ${seizures} seizure</div>
+    </div>
+    <div class="vg-stat-tile">
+      <div class="vg-stat-label">Avg Confidence</div>
+      <div class="vg-stat-value vg-stat-gold">${avgConf}%</div>
+      <div class="vg-stat-sub">Across all incidents</div>
+    </div>
+    <div class="vg-stat-tile">
+      <div class="vg-stat-label">With AI Report</div>
+      <div class="vg-stat-value vg-stat-green">${confirmed}</div>
+      <div class="vg-stat-sub">Gemini verified</div>
+    </div>
+    <div class="vg-stat-tile">
+      <div class="vg-stat-label">With Filmstrip</div>
+      <div class="vg-stat-value vg-stat-blue">${logs.filter(l=>l.has_frames).length}</div>
+      <div class="vg-stat-sub">Frame evidence saved</div>
+    </div>`;
+}
+
+
+function renderTable(logs) {
+  const wrap = document.getElementById('table-wrap');
+  if (!wrap) return;
+  if (!logs.length) {
+    wrap.innerHTML = `<div class="inc-empty"><span class="ei">🛡</span>No incidents recorded.</div>`;
+    return;
+  }
+  const sev = s => ({ critical:'sev-critical', high:'sev-high', moderate:'sev-moderate', low:'sev-low' })[s] || 'sev-unknown';
+  const typeColor = t => t === 'FALL' ? '#ef4444' : '#a855f7';
+
+  let html = `<table class="inc-table">
+    <thead><tr>
+      <th>#</th><th>Timestamp</th><th>Patient</th><th>Location</th>
+      <th>Event</th><th>Confidence</th><th>Severity</th><th>Verdict</th>
+    </tr></thead><tbody>`;
+
+  logs.forEach(l => {
+    const conf = Math.round((l.confidence||0)*100);
+    const confType = l.incident_type === 'SEIZURE' ? 'conf-seizure' : 'conf-fall';
+    html += `<tr class="${sev(l.severity)}" onclick="openDrawer(${l.id})">
+      <td style="color:var(--vg-muted);font-family:'JetBrains Mono',monospace;font-size:0.78rem;">#${l.id}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;white-space:nowrap;">${l.timestamp}</td>
+      <td style="font-weight:700;">${l.patient_name}</td>
+      <td style="color:var(--vg-muted);font-size:0.8rem;">${l.room}</td>
+      <td><span style="font-weight:800;color:${typeColor(l.incident_type)};">${l.incident_type}</span></td>
+      <td>
+        <div class="inc-conf-bar ${confType}">
+          <div class="inc-conf-fill" style="width:${conf}px;max-width:60px;"></div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;">${conf}%</span>
+        </div>
+      </td>
+      <td>${VG.severityPill(l.severity)}</td>
+      <td>${l.severity && l.severity !== 'unknown' ? VG.verdictPill('CONFIRMED') : VG.verdictPill('PENDING')}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ── Drawer ───────────────────────────────────────────────────
+async function openDrawer(id) {
+  const backdrop = document.getElementById('drawer-backdrop');
+  const drawer   = document.getElementById('incident-drawer');
+  const content  = document.getElementById('drawer-content');
+  content.innerHTML = '<div class="vg-skeleton vg-skeleton-card" style="margin-bottom:16px;"></div><div class="vg-skeleton" style="height:100px;"></div>';
+  VG.drawer.open('incident-drawer', 'drawer-backdrop');
+
+  try {
+    const d = await VG.fetchJSON(`/api/history/${id}`);
+    const actions = Array.isArray(d.actions) ? d.actions : [];
+    const frames  = Array.isArray(d.frame_urls) ? d.frame_urls : [];
+
+    const frameHtml = frames.length
+      ? `<div class="vg-filmstrip">${frames.slice(0,8).map(u =>
+            `<img src="${u}" alt="Frame" loading="lazy" onerror="this.style.display='none'">`
+        ).join('')}</div>`
+      : `<div class="vg-filmstrip"><div class="vg-filmstrip-placeholder">No frames<br>saved</div></div>`;
+
+    const actionsHtml = actions.length
+      ? `<ul class="drawer-actions-list">${actions.map(a => `<li>${a}</li>`).join('')}</ul>`
+      : '<p style="color:var(--vg-muted);font-size:0.82rem;">No actions recorded.</p>';
+
+    content.innerHTML = `
+      <div class="drawer-patient-header">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div style="font-weight:800;font-size:1.1rem;">${d.patient_name}</div>
+            <div style="color:var(--vg-muted);font-size:0.78rem;margin-top:2px;">${d.room} · Age ${d.age||'—'}</div>
+          </div>
+          <span style="font-size:0.7rem;color:var(--vg-muted);">${d.risk_profile}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <span style="font-weight:800;font-size:0.9rem;color:${d.incident_type==='SEIZURE'?'#a855f7':'#ef4444'};">${d.incident_type}</span>
+          ${VG.severityPill(d.severity)}
+          ${d.severity && d.severity!=='unknown' ? VG.verdictPill('CONFIRMED') : VG.verdictPill('PENDING')}
+          <span style="font-size:0.78rem;color:var(--vg-muted);margin-left:auto;font-family:'JetBrains Mono',monospace;">${d.timestamp}</span>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+          <div style="height:5px;border-radius:3px;background:${d.incident_type==='SEIZURE'?'#a855f7':'#ef4444'};width:${Math.round((d.confidence||0)*100)*0.8}px;max-width:200px;"></div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--vg-gold);">${Math.round((d.confidence||0)*100)}% confidence</span>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="drawer-section-title">🧠 Gemini Cognitive Core — Clinical Narrative</div>
+        <div class="drawer-narrative">${d.narrative || '<span style="color:var(--vg-muted);">Narrative not retained for this incident. Real-time report was shown during live monitoring.</span>'}</div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="drawer-section-title">✅ Recommended Clinical Actions</div>
+        ${actionsHtml}
+      </div>
+
+      <div class="drawer-section">
+        <div class="drawer-section-title">🎞 Event Filmstrip (${frames.length}/8 frames)</div>
+        ${frameHtml}
+      </div>
+
+      <div class="drawer-footer">
+        <button class="vg-btn vg-btn-sm" onclick="window.print()">🖨 Print Report</button>
+      </div>`;
+  } catch (_) {}
+}
+
+function closeDrawer() {
+  VG.drawer.close('incident-drawer', 'drawer-backdrop');
+}
+
+</script>
 </body>
 </html>
