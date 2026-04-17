@@ -47,23 +47,23 @@ Event    : {event_type}
 ML model confidence: {confidence:.0%}
 Frames reviewed: {n_frames} (spanning ~2s around trigger)
 
-IMPORTANT CONTEXT: This alert was raised by a deep learning model (MoViNet-A2) \
-trained specifically on ICU patient footage. At {confidence:.0%} confidence, \
-the model is highly likely to be correct. Your role is NOT to second-guess the \
+IMPORTANT CONTEXT: This alert was raised by a deep learning model (MoViNet-A2 for Vision, or YAMNet/Whisper for Audio). \
+At {confidence:.0%} confidence, the model is highly likely to be correct. Your role is NOT to second-guess the \
 ML model but to catch obvious false positives only.
+
+If the Reported Event contains a sequence/timeline of auditory events (e.g., "Accumulated Auditory Distress Timeline: ..."), evaluate the clinical progression over time. Isolated sounds have already been mathematically filtered out by the pre-processor. If the timeline shows sustained abnormal respiratory behavior (e.g., continuous coughing) or critical distress (e.g., moaning/crying/gasping), CONFIRM it immediately. IF it contains Urdu/English speech asking for help (e.g., 'help', 'bachao', 'dard'), CONFIRM it instantly!
 
 DEFAULT to CONFIRMED unless you can clearly and unambiguously identify that \
 the scene shows normal, safe patient behaviour with absolutely NO indication \
-of {event_type}.
+of the reported event.
 
 SUPPRESS only if: the patient is clearly in a completely stable, safe resting \
-position with zero motion consistent with {event_type}, AND there is an \
+position with zero motion consistent with the event, AND there is an \
 obvious innocent explanation for the ML trigger (e.g. a nurse adjusting bedding, \
-deliberate repositioning with full motor control).
+deliberate repositioning with full motor control, or normal conversation mistakenly flagged).
 
 Do NOT suppress based on uncertainty or because still frames lack motion context. \
-The ML model processed the full temporal video signal — trust it unless the visual \
-evidence is clearly contrary.
+The ML models processed the full temporal and auditory signal — trust it unless the visual evidence is clearly contrary.
 
 JSON output (no other text):
 {{"decision": "CONFIRMED" or "SUPPRESSED", "reason": "one sentence max"}}
@@ -85,7 +85,7 @@ Frames   : {n_frames} (spanning {window_s}s — pre-event through aftermath)
 
 Analyse in order:
 
-1. BODY POSITION — describe orientation, vertical height change, limb disposition in first vs last frame.
+1. EVENT AND BODY ANALYSIS — If this was an Audio event, transcribe/summarize what was heard. Then describe body orientation, vertical height change, limb disposition in first vs last frame.
 2. MOTION PATTERN — rapid/gradual? directional/oscillatory? controlled/uncontrolled?
 3. CLINICAL SIGNIFICANCE — what makes this clinically significant? complicating factors?
 4. SEVERITY — estimate severity and immediate risk.
@@ -94,7 +94,7 @@ Analyse in order:
 JSON output (no other text):
 {{
   "headline"     : "under 10 words for dashboard display",
-  "narrative"    : "1-2 sentences — clinical description of what occurred",
+  "narrative"    : "1-2 sentences — clinical description of what occurred, explicitly mentioning audio/speech if applicable",
   "severity"     : "low" | "moderate" | "high" | "critical",
   "body_analysis": "step 1 findings",
   "motion_analysis": "step 2 findings",

@@ -461,6 +461,7 @@ ws.onmessage = e => {
   if      (d.type === 'segment_start')  onSegStart(d);
   else if (d.type === 'transition')     onTransition(d);
   else if (d.type === 'frame_update')   onFrame(d);
+  else if (d.type === 'audio_alert')    onAudioAlert(d);
   else if (d.type === 'seizure_spike')  szSimElevate();
   else if (d.type === 'gemini_tier2')   onT2(d);
   else if (d.type === 'gemini_report')  onReport(d);
@@ -632,6 +633,16 @@ function onDone() {
   setTimeout(() => statsDone.classList.add('show'), 1200);
 }
 
+function onAudioAlert(d) {
+  // Use integrated VGAudio system from the UI overhaul
+  if (!d.classification || d.classification === 'noise') return;
+  const isCritical = d.panic > 0.5;
+  VGAudio.say(`${d.classification} detected in audio feed.`);
+  if (isCritical) {
+      VGAudio.chime('pre-alert');
+  }
+}
+
 /* ── Alert Review Hold ── */
 let _reviewDuration = 0;
 function onReview(d) {
@@ -724,7 +735,6 @@ function fireAlert(a) {
   /* Spike gauges */
   if (type === 'seizure') szSimSpike();
   else fallSimSpike();
-
   /* ── Severity accent system ── */
   document.body.classList.remove('sev-fall', 'sev-seizure');
   document.body.classList.add('sev-' + type);
@@ -795,6 +805,49 @@ function fireAlert(a) {
 function rmCard(id) {
   const c = $(id); if (c) c.remove();
   if (!logFeed.querySelector('.ac')) logEmpty.style.display = '';
+}
+
+/* ── Audio Alerts ── */
+function onAudioAlert(a) {
+  const { alert_id, event_type: type, sound_type: sound, confidence: conf, timestamp: ts } = a;
+  const id = alert_id;
+  
+  totalAlerts++;
+  sStats.detected++;
+  alertToday.textContent = totalAlerts;
+  alertCount.textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'');
+  logEmpty.style.display = 'none';
+
+  // Auditory Siren moved to LLM Validation output to prevent false-alarm fatigue
+
+  /* Sidebar shake */
+  sidebar.classList.remove('shaking');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('shaking');
+  setTimeout(() => sidebar.classList.remove('shaking'), 400);
+
+  const card = document.createElement('div');
+  card.id = 'ac-' + id;
+  card.className = 'ac';
+  card.style.borderLeftColor = '#8b5cf6';
+  card.style.background = 'rgba(139, 92, 246, 0.1)';
+  
+  card.innerHTML = `
+    <div class="ac-top">
+      <div>
+        <div class="ac-type" style="color: #a78bfa;">🎙 AUDIO ALERT: ${type.toUpperCase()}</div>
+        <div class="ac-conf">Detected Sound: <span style="color:#fff; font-weight:bold;">${sound}</span> (Conf: ${Math.round(conf*100)}%)</div>
+      </div>
+      <div class="ac-r">
+        <span class="ac-time">${ts}</span>
+        <button class="ac-x" style="color:#a78bfa" onclick="rmCard('ac-${id}')">×</button>
+      </div>
+    </div>
+    <div class="ac-gem thinking" id="mini-${id}" style="margin-top:8px;">
+      <div class="mpulse"></div>
+      <span>Cognitive Core tracking context…</span>
+    </div>`;
+  logFeed.insertBefore(card, logFeed.firstChild);
 }
 
 /* ── Gauges ── */

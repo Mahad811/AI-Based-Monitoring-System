@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import wave
 import sys
+import librosa
 
 # Force TensorFlow to suppress info/warnings to keep console clean
 import os
@@ -24,35 +25,14 @@ logging.basicConfig(
 logger = logging.getLogger("OfflineTester")
 
 def load_wav_file(filepath: str) -> np.ndarray:
-    """Loads a .wav file and converts it to a 1D float32 numpy array at 16kHz."""
+    """Loads an audio file and converts it to a 1D float32 numpy array at 16kHz."""
     try:
-        with wave.open(filepath, 'rb') as wf:
-            framerate = wf.getframerate()
-            n_channels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
-            n_frames = wf.getnframes()
-            
-            raw_data = wf.readframes(n_frames)
-            
-            if sampwidth == 2:
-                # 16-bit audio
-                audio_data = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-            else:
-                logger.error(f"Unsupported sample width: {sampwidth} bytes. Please use 16-bit WAV.")
-                sys.exit(1)
-                
-            # Convert to mono if stereo
-            if n_channels == 2:
-                audio_data = audio_data.reshape(-1, 2).mean(axis=1)
-                
-            # NOTE: We assume the wav file is already 16kHz. 
-            # In production we would resample, but for testing we assume user provides 16kHz wavs.
-            if framerate != SAMPLE_RATE:
-                logger.warning(f"File sample rate is {framerate}Hz, expected {SAMPLE_RATE}Hz. Analysis may be skewed.")
-                
-            return audio_data
+        # librosa automatically handles resampling to sr and converting to mono
+        # It also supports many formats beyond just 16-bit WAV (.mp3, .ogg, .flac)
+        audio_data, sr = librosa.load(filepath, sr=SAMPLE_RATE, mono=True)
+        return audio_data.astype(np.float32)
     except Exception as e:
-        logger.error(f"Failed to load '{filepath}': {e}")
+        logger.error(f"Failed to load '{filepath}' with librosa: {e}")
         sys.exit(1)
 
 def main():
