@@ -57,12 +57,20 @@ class VitalGuardian:
         try:
             result = future.result()
             if result.get("event_detected"):
-                event = AudioEvent(
-                    event_type="distress",
-                    sound_type=result.get("primary_sound"),
-                    confidence=result.get("details", [{}])[0].get("confidence", 1.0)
-                )
-                self.audio_queue.put(event)
+                # We log to UI/Action Engine based on lower threshold in config (0.05)
+                # But we ONLY pass to the LLM (CognitiveCore queue) if metric criteria are met
+                confidence = result.get("details", [{}])[0].get("confidence", 1.0)
+                severity_tier = result.get("severity_tier", 0)
+                
+                # Strict threshold for LLM processing: 
+                # Either very high confidence (>=0.15) OR high severity (tier 2/3)
+                if confidence >= 0.15 or severity_tier >= 2:
+                    event = AudioEvent(
+                        event_type="distress",
+                        sound_type=result.get("primary_sound"),
+                        confidence=confidence
+                    )
+                    self.audio_queue.put(event)
         except Exception as e:
             print(f"Error handling distress async: {e}")
 

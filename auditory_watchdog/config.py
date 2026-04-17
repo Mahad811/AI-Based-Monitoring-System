@@ -37,10 +37,13 @@ WHISPER_DEVICE = "cpu"
 # --- DISTRESS CLASSIFICATION SETTINGS ---
 YAMNET_MODEL_HANDLE = 'https://tfhub.dev/google/yamnet/1'
 # In ESC-50/YAMNet, these classes represent sounds we might care about
-# e.g., 16 is 'Breathing', 22 is 'Cough', 25 is 'Throat clearing', 28 is 'Crying, sobbing'
-# We will refine these based on YAMNet's specific class map later.
-DISTRESS_CLASSES = ['Cough', 'Crying, sobbing', 'Breathing', 'Baby cry, infant cry', 'Wail, moan', 'Groan', 'Gasp'] 
-DISTRESS_CONFIDENCE_THRESHOLD = 0.15
+# We explicitly map all classes used in our new 3-Tier Severity Taxonomy.
+DISTRESS_CLASSES = [
+    'Cough', 'Cry', 'sob', 'Breathing', 'moan', 'Groan', 'Gasp', 'Scream', 
+    'Choke', 'Yell', 'Wheeze', 'Pant', 'Sniff', 'Sneeze', 'Throat clearing', 
+    'Vomit', 'Retch', 'Sigh'
+]
+DISTRESS_CONFIDENCE_THRESHOLD = 0.05
 
 # --- SYSTEM SETTINGS ---
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")

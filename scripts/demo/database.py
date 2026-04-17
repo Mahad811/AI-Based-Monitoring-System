@@ -125,8 +125,26 @@ def init_db():
                     risk_profile="Epilepsy Protocol",  clip_type="seizure_1"),
             Patient(name="David Miller",      room="ICU 5", age=42,
                     risk_profile="Epilepsy Protocol",  clip_type="seizure_2"),
+            Patient(name="Aisha Malik",       room="PED-WC01", age=8, 
+                    risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"),
+            Patient(name="Zainab Tariq",      room="ISO-AS02", age=25, 
+                    risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video")
         ]
         db.bulk_save_objects(patients)
+        db.commit()
+    else:
+        # Check if custom patient exists dynamically to fix missing cards
+        custom_wc = db.query(Patient).filter_by(clip_type="whooping_cough_video").first()
+        if not custom_wc:
+            db.add(Patient(name="Aisha Malik", room="PED-WC01", age=8, risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"))
+            
+        custom_as = db.query(Patient).filter_by(clip_type="asthma_attack_video").first()
+        if not custom_as:
+            db.add(Patient(name="Zainab Tariq", room="ISO-AS02", age=25, risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video"))
+
+        live = db.query(Patient).filter_by(clip_type="live_feed").first()
+        if not live:
+            db.add(Patient(name="LIVE HARDWARE FEED", room="ICU-LIVE", age=0, risk_profile="Edge Mode: WebCam + Mic", clip_type="live_feed"))
         db.commit()
 
     # Always enforce clean room labels (fixes existing seeded records)

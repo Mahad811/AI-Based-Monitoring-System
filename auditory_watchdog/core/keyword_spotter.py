@@ -38,14 +38,14 @@ class KeywordSpotter:
             # We don't force a language, whisper auto-detects English or Urdu
             # We also set word_timestamps=False to speed it up
             # Provide a broad medical context prompt instead of specific keywords
-            initial_prompt = "patient in bed speaking urgent help nurse doctor madad pani dard"
+            initial_prompt = "Patient in distress: help aid nurse doctor. Urdu: مدد پانی درد تکلیف نرس ڈاکٹر"
             segments, info = self.model.transcribe(
                 audio_chunk, 
-                beam_size=5, 
+                beam_size=7, 
                 condition_on_previous_text=False,
                 initial_prompt=initial_prompt,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                vad_parameters=dict(min_silence_duration_ms=400)
             )
             
             # Combine all transcribed segments into one string
