@@ -30,6 +30,7 @@ import base64
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import collections
+import shutil
 from dotenv import load_dotenv
 
 # ── Load .env from repo root ──────────────────────────────────────────────────
@@ -148,6 +149,8 @@ _verify_times: collections.deque = collections.deque(maxlen=50)
 @app.on_event("startup")
 def startup_event():
     init_db()
+    # Ensure the public audio folder exists so extracted WAVs can be served statically
+    (PUBLIC_DIR / "audio").mkdir(parents=True, exist_ok=True)
 
 @app.get("/")
 def serve_dashboard():
@@ -614,6 +617,10 @@ class PipelineService:
         self.distress_classifier = DistressClassifier()
         self.keyword_spotter = KeywordSpotter()
         self.audio_executor = ThreadPoolExecutor(max_workers=2)
+        # Tells AuditoryMonitor whether a pre-recorded audio clip is active.
+        # True  → Whisper (KWS) is suppressed; vision pipeline is bypassed.
+        # False → normal behaviour (live feed, vision segments).
+        self.is_audio_segment_active = False
 
         print("Pipeline Service Started.\n")
 
@@ -783,7 +790,18 @@ class PipelineService:
         seg_idx = 999 
         total_segs = 1
         alert_counter = 0
-        
+
+        # Audio pipeline only runs for clips whose primary purpose IS audio demonstration.
+        # Vision segments (fall, seizure, normal) must never feed their embedded video
+        # audio into YAMNet/Whisper — it causes constant false audio alerts.
+        is_audio_clip = p.clip_type in ('whooping_cough_video', 'asthma_attack_video')
+        self.is_audio_segment_active = is_audio_clip  # read by AuditoryMonitor (Option 2)
+
+        # Reset the one-shot Gemini flag so each new audio patient gets exactly one
+        # LLM call, no matter how many times the rolling score crosses the threshold.
+        if is_audio_clip and hasattr(self, 'auditory_monitor'):
+            self.auditory_monitor.reset_for_patient()
+
         if True:
 
             print(f"[{seg['id']}/{total_segs}] {seg['patient']} — {seg['label']}")
@@ -848,42 +866,55 @@ class PipelineService:
                     await self.broadcast({"type": "seizure_spike"})
                 cap = cv2.VideoCapture(str(clip_path))
                 
-                is_custom_clip = "custom" in str(clip_path).lower()
-                if is_custom_clip:
-                    print(f"  [System] Custom testing mode active. Hardware microphone completely paused.")
-                    self.audio_stream.stop_stream()
-
-                # Custom Audio Injection
-                audio_data = None
-                try:
-                    wav_path = clip_path.with_suffix('.wav')
-                    if not wav_path.exists() and clip_path.suffix.lower() in ['.mp4', '.avi', '.mov']:
-                        try:
-                            try:
-                                from moviepy.editor import VideoFileClip
-                            except ImportError:
-                                from moviepy import VideoFileClip
-                            
-                            import warnings
-                            warnings.filterwarnings("ignore")
-                            print(f"  [Audio] Automatically extracting audio track from: {clip_path.name}...")
-                            clip = VideoFileClip(str(clip_path))
-                            if clip.audio is not None:
-                                clip.audio.write_audiofile(str(wav_path), fps=16000, logger=None)
-                            clip.close()
-                            print(f"  [Audio] Extraction complete!")
-                        except Exception as ex:
-                            print(f"  [Audio] Auto-extract failed: {ex}")
-
-                    if wav_path.exists():
-                        import librosa
-                        print(f"  [Audio] Loading synced audio track: {wav_path.name}")
-                        audio_data, _ = librosa.load(wav_path, sr=16000)
-                        
-                        # DISABLE REAL MICROPHONE TO ALLOW FULL OVERRIDE
+                # Silence the microphone for vision-only segments so ambient room audio
+                # and the clip's embedded audio track never bleed into the audio pipeline.
+                if not is_audio_clip:
+                    if self.audio_stream.is_running:
+                        print(f"  [Audio] Vision segment — microphone silenced for audio pipeline isolation.")
                         self.audio_stream.stop_stream()
-                except Exception as e:
-                    print(f"  [Audio] Sync error: {e}")
+
+                # Synchronized audio injection — only runs for audio demonstration clips
+                # (whooping_cough_video, asthma_attack_video). All vision segments skip
+                # this block entirely so audio_data stays None and nothing is injected.
+                audio_data = None
+                if is_audio_clip:
+                    try:
+                        wav_path = clip_path.with_suffix('.wav')
+                        if not wav_path.exists() and clip_path.suffix.lower() in ['.mp4', '.avi', '.mov']:
+                            try:
+                                try:
+                                    from moviepy.editor import VideoFileClip
+                                except ImportError:
+                                    from moviepy import VideoFileClip
+                                
+                                import warnings
+                                warnings.filterwarnings("ignore")
+                                print(f"  [Audio] Automatically extracting audio track from: {clip_path.name}...")
+                                clip = VideoFileClip(str(clip_path))
+                                if clip.audio is not None:
+                                    clip.audio.write_audiofile(str(wav_path), fps=16000, logger=None)
+                                clip.close()
+                                print(f"  [Audio] Extraction complete!")
+                            except Exception as ex:
+                                print(f"  [Audio] Auto-extract failed: {ex}")
+
+                        if wav_path.exists():
+                            import librosa
+                            print(f"  [Audio] Loading synced audio track: {wav_path.name}")
+                            audio_data, _ = librosa.load(wav_path, sr=16000)
+
+                            # Copy WAV to public/audio/ so the browser can stream it.
+                            # Named by patient id so multiple patients don't overwrite each other.
+                            pub_wav = PUBLIC_DIR / "audio" / f"patient_{p.id}.wav"
+                            try:
+                                shutil.copy2(str(wav_path), str(pub_wav))
+                            except Exception as _cp_err:
+                                print(f"  [Audio] WAV copy failed: {_cp_err}")
+
+                            # Stop real microphone so the injected WAV is the sole audio source
+                            self.audio_stream.stop_stream()
+                    except Exception as e:
+                        print(f"  [Audio] Sync error: {e}")
 
                 # FPS normalisation: subsample high-fps clips to FPS_TARGET so
                 # the pipeline's 32-frame / 64-frame temporal windows always
@@ -917,6 +948,15 @@ class PipelineService:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 raw_frame_idx = 0
                 audio_sec_injected = 0
+
+                # Tell the browser to start playing the audio track NOW — this fires
+                # exactly when the first frame begins streaming, after pre-buffering,
+                # so audio and video are in sync.
+                if is_audio_clip and audio_data is not None:
+                    await self.broadcast({
+                        "type":      "audio_track",
+                        "audio_url": f"/static/audio/patient_{p.id}.wav",
+                    })
 
                 while True:
                     # Handle pause state
@@ -967,22 +1007,27 @@ class PipelineService:
                                 # print(f"  [Dev] Injected Audio Sec: {sec}")
                             except: pass
 
-                    event   = self.pipeline.process_frame(frame)
+                    # Audio-only clips bypass the vision classifiers entirely — no
+                    # Kaggle HTTP calls, no fall/seizure inference, no retry spam.
+                    # The frame is still captured, buffered, and streamed to the UI.
+                    if is_audio_clip:
+                        event          = {'fall_smoothed': 0.0, 'seizure_smoothed': 0.0, 'event_type': 'normal'}
+                        top2_fall_mean = 0.0
+                        top2_sz_mean   = 0.0
+                    else:
+                        event   = self.pipeline.process_frame(frame)
+                        # Track top-2 mean — same logic as evaluate_fall_test.py
+                        raw_fall = self.pipeline.fall_classifier._last_fall_prob \
+                                   if self.pipeline.fall_classifier else 0.0
+                        raw_sz   = self.pipeline.seizure_classifier._last_seizure_prob \
+                                   if self.pipeline.seizure_classifier else 0.0
+                        top2_fall = sorted(top2_fall + [raw_fall], reverse=True)[:2]
+                        top2_sz   = sorted(top2_sz   + [raw_sz],   reverse=True)[:2]
+                        top2_fall_mean = sum(top2_fall) / len(top2_fall)
+                        top2_sz_mean   = sum(top2_sz)   / len(top2_sz)
+
                     fall_sm = event.get('fall_smoothed', fall_sm)
                     sz_sm   = event.get('seizure_smoothed', sz_sm)
-
-                    # Track top-2 mean — same logic as evaluate_fall_test.py
-                    raw_fall = self.pipeline.fall_classifier._last_fall_prob \
-                               if self.pipeline.fall_classifier else 0.0
-                    raw_sz   = self.pipeline.seizure_classifier._last_seizure_prob \
-                               if self.pipeline.seizure_classifier else 0.0
-
-                    # Update top-2 heaps (keep only the two highest values seen)
-                    top2_fall = sorted(top2_fall + [raw_fall], reverse=True)[:2]
-                    top2_sz   = sorted(top2_sz   + [raw_sz],   reverse=True)[:2]
-
-                    top2_fall_mean = sum(top2_fall) / len(top2_fall)
-                    top2_sz_mean   = sum(top2_sz)   / len(top2_sz)
 
                     # Inject top-2 mean into event so consolidator sees a robust score
                     event_for_consolidator = dict(event)
@@ -1014,6 +1059,13 @@ class PipelineService:
 
                     if seg["type"] == "seizure":
                         fall_sm = min(fall_sm, 0.19)
+
+                    # Audio-demo segments (whooping cough, asthma) are respiratory clips
+                    # with no fall or seizure activity. Cap both gauges at 8% so the
+                    # vision model's background noise doesn't produce misleading spikes.
+                    if is_audio_clip:
+                        fall_sm = min(fall_sm, 0.08)
+                        sz_sm   = min(sz_sm,   0.08)
 
                     payload = {
                         "type":         "frame_update",
@@ -1077,8 +1129,9 @@ class PipelineService:
 
                 cap.release()
                 
-                # RE-ENABLE REAL MICROPHONE FOR FUTURE CAMERA USAGE / DEFAULT STATE
-                if audio_data is not None or is_custom_clip:
+                # RE-ENABLE REAL MICROPHONE after an audio clip that stopped it for WAV injection.
+                # Vision clips leave the mic off intentionally — live feed handles its own start.
+                if audio_data is not None:
                     self.audio_stream.start_stream()
 
                 # Save the last frame so we can keep broadcasting it during
@@ -1375,10 +1428,12 @@ class PipelineService:
                 await self.broadcast({"type": "transition", "message": "Switching cameras..."})
                 await asyncio.sleep(GAP_SECONDS)
 
+        self.is_audio_segment_active = False  # restore for next patient / live feed
         await self.broadcast({"type": "demo_complete"})
         self.running = False
 
     async def _play_live_feed(self, pat):
+        self.is_audio_segment_active = False  # live feed always uses real mic + Whisper
         self._active_patient = f"{pat.name} ({pat.room})"
         await self.broadcast({
             "type": "segment_start",
@@ -1523,12 +1578,41 @@ class PipelineService:
 # AUDITORY MONITOR
 # ─────────────────────────────────────────────────────
 class AuditoryMonitor:
+    # Minimum seconds between two audio_alert broadcasts for the SAME sound type.
+    # Stops the "one card per detection" flood and lets the frontend update an
+    # existing card in place with a rolling count badge.
+    ALERT_DEDUPE_SEC = 5.0
+
     def __init__(self, service: PipelineService):
         self.service = service
         self.service.audio_stream.start_stream()
         import collections
         import time
         self.audio_history = collections.deque(maxlen=50)
+        # One-shot guard: permits only ONE Gemini call per audio patient no matter
+        # how many times the 15-second rolling score crosses the threshold.
+        self.gemini_audio_fired = False
+        # Per-sound-type counters and last-broadcast timestamps used to consolidate
+        # rapid-fire detections into a single updating UI card.
+        self.sound_counts: dict = {}
+        self.last_broadcast: dict = {}
+
+    def reset_for_patient(self):
+        """Called at the start of each new audio patient to allow a fresh Gemini call."""
+        self.gemini_audio_fired = False
+        self.audio_history.clear()
+        self.sound_counts.clear()
+        self.last_broadcast.clear()
+        # Also wipe any speech residually buffered by the PrivacyShield so that
+        # stale speech from before this patient can't leak into Whisper.
+        try:
+            ps = self.service.privacy_shield
+            ps.speech_buffer = []
+            ps.consecutive_speech_chunks = 0
+            ps.consecutive_silence_chunks = 0
+            ps.in_visitor_mode = False
+        except Exception:
+            pass
 
     async def run_forever(self):
         self.loop = asyncio.get_running_loop()
@@ -1547,8 +1631,13 @@ class AuditoryMonitor:
                     # Run synchronously in threadpool so it doesn't block WebSocket stream
                     future_distress = self.service.audio_executor.submit(self.service.distress_classifier.analyze_chunk, chunk)
                     future_distress.add_done_callback(self._handle_distress_result)
-                    
-                    if speech_clip is not None:
+
+                    # Whisper is suppressed during pre-recorded audio clips.
+                    # Cough / breath audio causes Whisper to hallucinate gibberish
+                    # (Korean, repeated Urdu, single English words) that each trigger
+                    # a spurious Gemini call.  Only run on live mic feeds where a
+                    # real patient might actually speak.
+                    if speech_clip is not None and not self.service.is_audio_segment_active:
                         future_kws = self.service.audio_executor.submit(self.service.keyword_spotter.analyze_chunk, speech_clip)
                         future_kws.add_done_callback(self._handle_kws_result)
 
@@ -1559,57 +1648,70 @@ class AuditoryMonitor:
                 conf = result.get("details", [{}])[0].get("confidence", 1.0)
                 sound_type = result.get("primary_sound")
                 score = result.get("severity_score", 2)
-                
+
                 # Append to history buffer
                 self.audio_history.append({"time": time.time(), "sound": sound_type, "score": score, "src": "YAMNet"})
-                
+
                 # Compute rolling score over last 15 seconds
                 now = time.time()
                 recent_history = [x for x in self.audio_history if now - x["time"] <= 15.0]
                 total_score = sum(x["score"] for x in recent_history)
-                
-                print(f"  [Audio Accumulator] {sound_type} (+{score}). Rolling Score: {total_score}/10")
-                
-                # 1. UI THRESHOLD (Very Low): Log everything instantly to UI History
-                if score >= 1:
+
+                # Track per-sound-type occurrence count so the frontend card can
+                # display "Cough ×5" instead of spawning five separate cards.
+                self.sound_counts[sound_type] = self.sound_counts.get(sound_type, 0) + 1
+
+                print(f"  [Audio Accumulator] {sound_type} (+{score}). Rolling Score: {total_score}/10  (×{self.sound_counts[sound_type]})")
+
+                # Rate-limited UI broadcast: only send a card for this sound_type if
+                # the last card for the same sound was more than ALERT_DEDUPE_SEC ago.
+                # The frontend will update the existing card's count in place.
+                last_sent = self.last_broadcast.get(sound_type, 0.0)
+                should_broadcast = (now - last_sent) >= self.ALERT_DEDUPE_SEC
+
+                if should_broadcast and score >= 1:
+                    self.last_broadcast[sound_type] = now
+                    # Single DB row per broadcast — stops the 189-row flood we were seeing.
                     try:
                         db_log = SessionLocal()
-                        # Get active patient ID by querying DB with the name we stored
                         pat = db_log.query(Patient).filter(Patient.name == self.service._active_patient).first()
                         p_id = pat.id if pat else 1
-                        
                         new_log = IncidentLog(patient_id=p_id, incident_type=f"AUDIO: {sound_type}", confidence=conf)
                         db_log.add(new_log)
                         db_log.commit()
                         db_log.close()
                     except Exception as e:
                         print(f'DB Log Error: {e}')
-                        
-                    alert_id = int(time.time() * 1000) % 1000000
+
                     payload = {
                         "type": "audio_alert",
-                        "alert_id": alert_id,
+                        "alert_id": f"audio-{sound_type}",   # stable id → frontend updates in place
                         "event_type": "Distress Audio",
                         "sound_type": sound_type,
                         "confidence": conf,
-                        "timestamp": time.strftime("%H:%M:%S")
+                        "count": self.sound_counts[sound_type],
+                        "timestamp": time.strftime("%H:%M:%S"),
                     }
                     asyncio.run_coroutine_threadsafe(self.service.broadcast(payload), self.loop)
 
-                # 2. LLM THRESHOLD (Very High): Use continuous history metrics exclusively for Gemini
-                if total_score >= 10:
+                # 2. LLM THRESHOLD: fire Gemini once the rolling score reaches 10.
+                # The one-shot guard ensures this fires at most ONCE per patient
+                # so the accumulator re-filling on a long coughing clip does not
+                # trigger multiple overlapping Gemini round-trips.
+                if total_score >= 10 and not self.gemini_audio_fired:
+                    self.gemini_audio_fired = True
                     alert_id = int(time.time() * 1000) % 1000000
                     timeline_str = " | ".join([f"[{time.strftime('%H:%M:%S', time.localtime(x['time']))}] {x['sound']} (S{x['score']})" for x in recent_history])
                     print(f"  *** LLM TRIGGERED: Accumulated Auditory Distress -> {timeline_str}")
-                    
+
                     self.audio_history.clear()
-                    
+
                     frames = list(self.service._risk_frame_buffer)
                     frames_to_send = []
                     if len(frames) > 0:
                         step = max(1, len(frames) // 8)
                         frames_to_send = frames[::step][-8:]
-                    
+
                     asyncio.run_coroutine_threadsafe(
                         self.service.execute_gemini_job(alert_id, f"Accumulated Auditory Distress Timeline: {timeline_str}", conf, self.service._active_patient, frames_to_send),
                         self.loop
@@ -1619,16 +1721,33 @@ class AuditoryMonitor:
 
     def _handle_kws_result(self, future):
         try:
+            # Safety rail: if an audio clip is active, ignore any Whisper result —
+            # cough / breathing audio reliably hallucinates into Korean or repeated
+            # Urdu, which the older code paths happily forwarded to Gemini.
+            if self.service.is_audio_segment_active:
+                return
+            # Safety rail: one Gemini audio call per patient, period.
+            if self.gemini_audio_fired:
+                return
+
             result = future.result()
             if result.get("event_detected"):
                 spoken_text = result.get("text")
-                
+
+                # Hallucination filter: reject transcripts that are clearly garbage.
+                # Real medical speech is at least 4 characters AND has at least 2
+                # distinct non-whitespace characters (rejects "ڈاکٹرس ڈاکٹرس ڈاکٹرس").
+                cleaned = (spoken_text or "").strip()
+                if len(cleaned) < 4 or len(set(cleaned.replace(" ", ""))) < 4:
+                    print(f"  [KWS] Dropped hallucination: '{cleaned}'")
+                    return
+
                 self.audio_history.append({"time": time.time(), "sound": f"Spoken: '{spoken_text}'", "score": 10, "src": "Whisper"})
-                
+
                 now = time.time()
                 recent_history = [x for x in self.audio_history if now - x["time"] <= 15.0]
                 timeline_str = " | ".join([f"[{time.strftime('%H:%M:%S', time.localtime(x['time']))}] {x['sound']}" for x in recent_history])
-                
+
                 alert_id = int(time.time() * 1000) % 1000000
                 payload = {
                     "type": "audio_alert",
@@ -1639,7 +1758,8 @@ class AuditoryMonitor:
                     "timestamp": time.strftime("%H:%M:%S")
                 }
                 print(f"  *** ALERT: KEYWORD THRESHOLD BROKEN -> {spoken_text}")
-                
+
+                self.gemini_audio_fired = True
                 self.audio_history.clear()
                 
                 frames = list(self.service._risk_frame_buffer)
@@ -1763,8 +1883,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if not hasattr(service_instance, 'auditory_started'):
             service_instance.auditory_started = True
-            auditory_monitor = AuditoryMonitor(service_instance)
-            asyncio.create_task(auditory_monitor.run_forever())
+            service_instance.auditory_monitor = AuditoryMonitor(service_instance)
+            asyncio.create_task(service_instance.auditory_monitor.run_forever())
 
         while True:
             try:

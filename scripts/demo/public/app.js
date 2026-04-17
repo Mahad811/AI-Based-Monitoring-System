@@ -462,6 +462,7 @@ ws.onmessage = e => {
   else if (d.type === 'transition')     onTransition(d);
   else if (d.type === 'frame_update')   onFrame(d);
   else if (d.type === 'audio_alert')    onAudioAlert(d);
+  else if (d.type === 'audio_track')    onAudioTrack(d);
   else if (d.type === 'seizure_spike')  szSimElevate();
   else if (d.type === 'gemini_tier2')   onT2(d);
   else if (d.type === 'gemini_report')  onReport(d);
@@ -480,6 +481,7 @@ function onSegStart(d) {
   document.body.classList.remove('sev-fall', 'sev-seizure');
   hideAlertBanner();
   VGAudio.stopAlarm();
+  stopClipAudio();
 
   const lbl  = (d.label || '').toLowerCase();
   const type = d.seg_type || (lbl.includes('fall') ? 'fall' : lbl.includes('seiz') || lbl.includes('unusual') ? 'seizure' : 'normal');
@@ -516,6 +518,7 @@ function onSegStart(d) {
 }
 
 function onTransition(d) {
+  stopClipAudio();
   trnTxt.textContent = d.message || 'Switching Camera…';
   $('trn-sub').textContent = 'Preparing next patient segment';
   trnOver.classList.remove('hide');
@@ -807,47 +810,101 @@ function rmCard(id) {
   if (!logFeed.querySelector('.ac')) logEmpty.style.display = '';
 }
 
-/* ── Audio Alerts ── */
+/* ── Audio Alerts (consolidated) ──
+   Backend now sends stable per-sound ids (e.g. "audio-Cough") with a running
+   count. We keep ONE card per sound type and update its count + timestamp in
+   place, so a long coughing clip paints a compact list like:
+       🎙 Cough      ×7   01:32:54
+       🎙 Breathing  ×4   01:32:51
+       🎙 Wheeze     ×1   01:32:48
+   …instead of spawning 12 separate cards.
+*/
 function onAudioAlert(a) {
-  const { alert_id, event_type: type, sound_type: sound, confidence: conf, timestamp: ts } = a;
-  const id = alert_id;
-  
-  totalAlerts++;
-  sStats.detected++;
-  alertToday.textContent = totalAlerts;
-  alertCount.textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'');
-  logEmpty.style.display = 'none';
+  const { alert_id, event_type: type, sound_type: sound, confidence: conf, count, timestamp: ts } = a;
 
-  // Auditory Siren moved to LLM Validation output to prevent false-alarm fatigue
+  // Keyword Spoken still uses a fresh card per utterance (transcripts differ).
+  const isKeyword = type === 'Keyword Spoken';
+  const domId = isKeyword ? 'ac-' + alert_id : 'ac-' + String(alert_id).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const isNew = !$(domId);
 
-  /* Sidebar shake */
-  sidebar.classList.remove('shaking');
-  void sidebar.offsetWidth;
-  sidebar.classList.add('shaking');
-  setTimeout(() => sidebar.classList.remove('shaking'), 400);
+  if (isNew) {
+    totalAlerts++;
+    sStats.detected++;
+    alertToday.textContent = totalAlerts;
+    alertCount.textContent = totalAlerts + ' alert' + (totalAlerts!==1?'s':'');
+    logEmpty.style.display = 'none';
 
-  const card = document.createElement('div');
-  card.id = 'ac-' + id;
-  card.className = 'ac';
-  card.style.borderLeftColor = '#8b5cf6';
-  card.style.background = 'rgba(139, 92, 246, 0.1)';
-  
-  card.innerHTML = `
+    /* Light sidebar shake only for first-of-its-kind detection */
+    sidebar.classList.remove('shaking');
+    void sidebar.offsetWidth;
+    sidebar.classList.add('shaking');
+    setTimeout(() => sidebar.classList.remove('shaking'), 400);
+  }
+
+  const countBadge = (typeof count === 'number' && count > 1)
+    ? `<span style="background:rgba(139,92,246,0.25);color:#c4b5fd;font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:0.04em;">×${count}</span>`
+    : '';
+
+  const headline = isKeyword
+    ? `🎙 AUDIO ALERT: ${type.toUpperCase()}`
+    : `🎙 AUDIO · ${sound.toUpperCase()}${countBadge ? '' : ''}`;
+
+  const bodyHtml = `
     <div class="ac-top">
       <div>
-        <div class="ac-type" style="color: #a78bfa;">🎙 AUDIO ALERT: ${type.toUpperCase()}</div>
+        <div class="ac-type" style="color: #a78bfa;">${headline}${!isKeyword ? countBadge : ''}</div>
         <div class="ac-conf">Detected Sound: <span style="color:#fff; font-weight:bold;">${sound}</span> (Conf: ${Math.round(conf*100)}%)</div>
       </div>
       <div class="ac-r">
         <span class="ac-time">${ts}</span>
-        <button class="ac-x" style="color:#a78bfa" onclick="rmCard('ac-${id}')">×</button>
+        <button class="ac-x" style="color:#a78bfa" onclick="rmCard('${domId}')">×</button>
       </div>
-    </div>
-    <div class="ac-gem thinking" id="mini-${id}" style="margin-top:8px;">
-      <div class="mpulse"></div>
-      <span>Cognitive Core tracking context…</span>
     </div>`;
-  logFeed.insertBefore(card, logFeed.firstChild);
+
+  if (isNew) {
+    const card = document.createElement('div');
+    card.id = domId;
+    card.className = 'ac';
+    card.style.borderLeftColor = '#8b5cf6';
+    card.style.background = 'rgba(139, 92, 246, 0.1)';
+    card.style.transition = 'background 0.3s';
+    card.innerHTML = bodyHtml;
+    logFeed.insertBefore(card, logFeed.firstChild);
+  } else {
+    const card = $(domId);
+    card.innerHTML = bodyHtml;
+    /* Brief highlight pulse so the audience can see the card updated */
+    card.style.background = 'rgba(167, 139, 250, 0.22)';
+    setTimeout(() => { card.style.background = 'rgba(139, 92, 246, 0.1)'; }, 380);
+  }
+}
+
+/* ── Clip Audio Playback ──────────────────────────────────────────────────────
+   The backend extracts the audio track from each audio-demo clip into a WAV
+   file and serves it as /static/audio/patient_N.wav.  When the frame loop
+   starts (post-prebuffering) it broadcasts an audio_track message so the
+   browser plays the audio in sync with the first frame.
+─────────────────────────────────────────────────────────────────────────── */
+let _clipAudio = null;
+
+function stopClipAudio() {
+  if (_clipAudio) {
+    _clipAudio.pause();
+    _clipAudio.src = '';
+    _clipAudio = null;
+  }
+}
+
+function onAudioTrack(d) {
+  stopClipAudio();
+  const audio = new Audio(d.audio_url + '?t=' + Date.now()); // cache-bust on each patient
+  audio.volume = 0.85;
+  audio.play().catch(() => {
+    // Autoplay blocked until a user gesture — the AudioContext unlock in DOMContentLoaded
+    // already fired a gesture handler; if autoplay is still blocked the user will need
+    // to interact with the page once.
+  });
+  _clipAudio = audio;
 }
 
 /* ── Gauges ── */
