@@ -9,6 +9,7 @@
         window.location.href = '/static/login.html';
     }
 </script>
+<link rel="stylesheet" href="vg-ui.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -44,8 +45,9 @@
   <div class="nav-right">
     <!-- Nurse Nameplate & Logout -->
     <div style="display: flex; align-items: center; gap: 8px; margin-right: 15px; border-right: 1px solid rgba(255,255,255,0.08); padding-right: 15px;">
-        <span id="nurse-badge" style="font-size:0.75rem; color:#dca54c; font-weight:700; display:flex; align-items:center; gap:5px;">
-            <span style="font-size:1rem;">👩‍⚕️</span> <span id="nurse-name-display">Loading...</span>
+        <span id="nurse-badge" style="font-size:0.75rem; color:#dca54c; font-weight:700; display:flex; align-items:center; gap:7px;">
+            <span id="idx-nav-av" style="width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:800;color:#fff;flex-shrink:0;"></span>
+            <span id="nurse-name-display">Loading...</span>
         </span>
         <a href="/static/admin.html" id="admin-hub-btn" style="background: rgba(220,165,76,0.1); color: #dca54c; text-decoration: none; border: 1px solid rgba(220,165,76,0.3); padding: 4px 10px; border-radius: 5px; font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-left: 5px;" onmouseover="this.style.background='rgba(220,165,76,0.2)'" onmouseout="this.style.background='rgba(220,165,76,0.1)'">⚙️ Admin</a>
         <button onclick="logoutNurse()" style="background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); padding: 4px 10px; border-radius: 5px; font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">Logout</button>
@@ -59,6 +61,7 @@
     <div class="fps-wrap">
       <span id="fps-txt" class="fps-r">0 FPS</span>
     </div>
+    <button id="snd-toggle" class="snd-pill" onclick="VGAudio.toggle()">🔊 Sound</button>
     <div class="live-pill"><span class="lb"></span>LIVE PROCESSING</div>
   </div>
 
@@ -72,6 +75,35 @@
 
     <div id="vid-box">
       <img id="vstream" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="ICU camera feed">
+
+      <!-- ── Alert Banner ── -->
+      <div id="alert-banner">
+        <div class="ab-strobe"></div>
+        <div class="ab-icon">⚠</div>
+        <div class="ab-body">
+          <div id="ab-type" class="ab-type">⚠ ALERT DETECTED</div>
+          <div class="ab-meta">
+            <span id="ab-room">Room —</span>
+            &nbsp;·&nbsp;
+            <span id="ab-name">—</span>
+            &nbsp;·&nbsp; Confidence&nbsp;<span id="ab-conf">—</span>
+          </div>
+        </div>
+        <button class="ab-ack" onclick="ackAlert()">Acknowledge&nbsp;&nbsp;<kbd>Space</kbd></button>
+      </div>
+
+      <!-- ── Tactical HUD Overlay ── -->
+      <div id="vid-hud">
+        <div class="hud-tl"></div>
+        <div class="hud-tr"></div>
+        <div class="hud-bl"></div>
+        <div class="hud-br"></div>
+        <div class="hud-center">
+          <div class="hud-bracket"></div>
+        </div>
+        <div class="hud-scan"></div>
+        <div class="hud-label" id="hud-label">TARGET: PATIENT_A · CONF 0% · MoViNet-A2</div>
+      </div>
 
       <!-- Corner labels -->
       <div class="vcorn tl">
@@ -211,9 +243,30 @@
         <span class="g-lbl">FALL RISK</span>
         <div class="g-wrap">
           <svg class="g-svg" viewBox="0 0 100 100">
+            <!-- Color-band arcs (behind track) -->
+            <circle class="g-band gb" cx="50" cy="50" r="38"/>
+            <circle class="g-band ga" cx="50" cy="50" r="38"/>
+            <circle class="g-band gr" cx="50" cy="50" r="38"/>
+            <!-- Track -->
             <circle class="g-track" cx="50" cy="50" r="38"/>
+            <!-- Active arc -->
             <circle class="g-arc fa" id="fall-arc" cx="50" cy="50" r="38"
                     stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+            <!-- 12 radial tick marks -->
+            <g class="g-ticks">
+              <line x1="94.0" y1="50.0" x2="98.0" y2="50.0"/>
+              <line x1="88.1" y1="72.0" x2="91.6" y2="74.0"/>
+              <line x1="72.0" y1="88.1" x2="74.0" y2="91.6"/>
+              <line x1="50.0" y1="94.0" x2="50.0" y2="98.0"/>
+              <line x1="28.0" y1="88.1" x2="26.0" y2="91.6"/>
+              <line x1="11.9" y1="72.0" x2="8.4"  y2="74.0"/>
+              <line x1="6.0"  y1="50.0" x2="2.0"  y2="50.0"/>
+              <line x1="11.9" y1="28.0" x2="8.4"  y2="26.0"/>
+              <line x1="28.0" y1="11.9" x2="26.0" y2="8.4"/>
+              <line x1="50.0" y1="6.0"  x2="50.0" y2="2.0"/>
+              <line x1="72.0" y1="11.9" x2="74.0" y2="8.4"/>
+              <line x1="88.1" y1="28.0" x2="91.6" y2="26.0"/>
+            </g>
           </svg>
           <div class="g-center">
             <span class="g-pct" id="fall-pct">0%</span>
@@ -227,9 +280,30 @@
         <span class="g-lbl">SEIZURE RISK</span>
         <div class="g-wrap">
           <svg class="g-svg" viewBox="0 0 100 100">
+            <!-- Color-band arcs (behind track) -->
+            <circle class="g-band gb" cx="50" cy="50" r="38"/>
+            <circle class="g-band ga" cx="50" cy="50" r="38"/>
+            <circle class="g-band gr" cx="50" cy="50" r="38"/>
+            <!-- Track -->
             <circle class="g-track" cx="50" cy="50" r="38"/>
+            <!-- Active arc -->
             <circle class="g-arc sa" id="sz-arc" cx="50" cy="50" r="38"
                     stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+            <!-- 12 radial tick marks -->
+            <g class="g-ticks">
+              <line x1="94.0" y1="50.0" x2="98.0" y2="50.0"/>
+              <line x1="88.1" y1="72.0" x2="91.6" y2="74.0"/>
+              <line x1="72.0" y1="88.1" x2="74.0" y2="91.6"/>
+              <line x1="50.0" y1="94.0" x2="50.0" y2="98.0"/>
+              <line x1="28.0" y1="88.1" x2="26.0" y2="91.6"/>
+              <line x1="11.9" y1="72.0" x2="8.4"  y2="74.0"/>
+              <line x1="6.0"  y1="50.0" x2="2.0"  y2="50.0"/>
+              <line x1="11.9" y1="28.0" x2="8.4"  y2="26.0"/>
+              <line x1="28.0" y1="11.9" x2="26.0" y2="8.4"/>
+              <line x1="50.0" y1="6.0"  x2="50.0" y2="2.0"/>
+              <line x1="72.0" y1="11.9" x2="74.0" y2="8.4"/>
+              <line x1="88.1" y1="28.0" x2="91.6" y2="26.0"/>
+            </g>
           </svg>
           <div class="g-center">
             <span class="g-pct" id="sz-pct">0%</span>
@@ -302,7 +376,11 @@
 </div><!-- end dash -->
 
 
+<!-- ── Full-screen flash overlay (pointer-events:none) ── -->
+<div id="vg-flash"></div>
+
 <!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script src="vg-ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
