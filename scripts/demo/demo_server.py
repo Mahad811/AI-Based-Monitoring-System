@@ -48,6 +48,10 @@ from visual_guardian.pipeline import VisionPipeline
 from cognitive_core.gemini_verifier import GeminiVerifier
 from database import init_db, get_db, Nurse, Patient, IncidentLog, SessionLocal
 from sqlalchemy.orm import Session
+from auditory_watchdog.core.audio_capture import AudioStream
+from auditory_watchdog.core.privacy_shield import PrivacyShield
+from auditory_watchdog.core.distress_classifier import DistressClassifier
+from auditory_watchdog.core.keyword_spotter import KeywordSpotter
 
 # ─────────────────────────────────────────────────────
 # SETTINGS
@@ -110,6 +114,8 @@ def _build_clip_mapping():
     normal_clips  = (_find_clips(D / "normal") + _find_clips(D / "fall_test" / "nofall"))
     sz_normal_clips  = _find_clips(D / "unusual_movement" / "data" / "Normal")
     sz_clips    = _find_clips(D / "unusual_movement" / "data" / "Seizure")
+    wc_clips = _find_clips(D / "whooping_cough")
+    asthma_clips = _find_clips(D / "asthma_attack")
     
     return {
         "fall_1": [fall_clips[0]] if len(fall_clips) > 0 else [],
@@ -117,6 +123,8 @@ def _build_clip_mapping():
         "normal_1": [normal_clips[0]] if len(normal_clips) > 0 else [],
         "seizure_1": sz_normal_clips[:2] + sz_clips[:2],
         "seizure_2": sz_normal_clips[2:4] + sz_clips[2:4],
+        "whooping_cough_video": wc_clips,
+        "asthma_attack_video": asthma_clips,
     }
 
 CLIP_MAPPING = _build_clip_mapping()
@@ -313,6 +321,13 @@ class PipelineService:
         self._risk_frame_buffer = collections.deque(maxlen=90)  # last 3s @ 30fps
         self._active_patient    = "Patient"
 
+        print("Initializing Auditory Watchdog components...")
+        self.audio_stream = AudioStream()
+        self.privacy_shield = PrivacyShield()
+        self.distress_classifier = DistressClassifier()
+        self.keyword_spotter = KeywordSpotter()
+        self.audio_executor = ThreadPoolExecutor(max_workers=2)
+
         print("Pipeline Service Started.\n")
 
     async def broadcast(self, payload: dict):
@@ -401,6 +416,9 @@ class PipelineService:
             await self.broadcast({"type": "transition", "message": "Invalid Patient ID"})
             return
             
+        if p.clip_type == "live_feed":
+            return await self._play_live_feed(p)
+            
         clips = CLIP_MAPPING.get(p.clip_type, [])
         if not clips:
             await self.broadcast({"type": "transition", "message": "Video feed offline."})
@@ -488,6 +506,43 @@ class PipelineService:
                 if seg["type"] == "seizure" and clip_idx == 2:
                     await self.broadcast({"type": "seizure_spike"})
                 cap = cv2.VideoCapture(str(clip_path))
+                
+                is_custom_clip = "custom" in str(clip_path).lower()
+                if is_custom_clip:
+                    print(f"  [System] Custom testing mode active. Hardware microphone completely paused.")
+                    self.audio_stream.stop_stream()
+
+                # Custom Audio Injection
+                audio_data = None
+                try:
+                    wav_path = clip_path.with_suffix('.wav')
+                    if not wav_path.exists() and clip_path.suffix.lower() in ['.mp4', '.avi', '.mov']:
+                        try:
+                            try:
+                                from moviepy.editor import VideoFileClip
+                            except ImportError:
+                                from moviepy import VideoFileClip
+                            
+                            import warnings
+                            warnings.filterwarnings("ignore")
+                            print(f"  [Audio] Automatically extracting audio track from: {clip_path.name}...")
+                            clip = VideoFileClip(str(clip_path))
+                            if clip.audio is not None:
+                                clip.audio.write_audiofile(str(wav_path), fps=16000, logger=None)
+                            clip.close()
+                            print(f"  [Audio] Extraction complete!")
+                        except Exception as ex:
+                            print(f"  [Audio] Auto-extract failed: {ex}")
+
+                    if wav_path.exists():
+                        import librosa
+                        print(f"  [Audio] Loading synced audio track: {wav_path.name}")
+                        audio_data, _ = librosa.load(wav_path, sr=16000)
+                        
+                        # DISABLE REAL MICROPHONE TO ALLOW FULL OVERRIDE
+                        self.audio_stream.stop_stream()
+                except Exception as e:
+                    print(f"  [Audio] Sync error: {e}")
 
                 # FPS normalisation: subsample high-fps clips to FPS_TARGET so
                 # the pipeline's 32-frame / 64-frame temporal windows always
@@ -520,6 +575,7 @@ class PipelineService:
                 # Seek back so the UI loop replays the full clip from frame 1
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 raw_frame_idx = 0
+                audio_sec_injected = 0
 
                 while True:
                     # Handle pause state
@@ -549,6 +605,26 @@ class PipelineService:
 
                     frame_buffer.append(frame.copy())
                     self._risk_frame_buffer.append(frame.copy())  # feeds ProactiveRiskMonitor
+
+                    # CUSTOM AUDIO INJECTION: Synchronized with frames
+                    video_time_sec = (raw_frame_idx - 1) / max(1, native_fps)
+                    if audio_data is not None and video_time_sec >= audio_sec_injected:
+                        sec = audio_sec_injected
+                        audio_sec_injected += 1
+                        start = max(0, (sec-2)*16000)
+                        end = (sec+1)*16000
+                        stride_start = sec*16000
+                        if end <= len(audio_data):
+                            rolling = np.zeros(16000 * 3, dtype=np.float32)
+                            chunk = audio_data[start:end]
+                            rolling[-len(chunk):] = chunk
+                            new_stride = audio_data[stride_start:end]
+                            try:
+                                if self.audio_stream.audio_queue.full():
+                                    self.audio_stream.audio_queue.get_nowait()
+                                self.audio_stream.audio_queue.put_nowait((rolling, new_stride))
+                                # print(f"  [Dev] Injected Audio Sec: {sec}")
+                            except: pass
 
                     event   = self.pipeline.process_frame(frame)
                     fall_sm = event.get('fall_smoothed', fall_sm)
@@ -635,8 +711,6 @@ class PipelineService:
                             "pat":         seg["patient"],
                             "past_frames": list(frame_buffer),
                         }
-                        future_frame_counter = 0
-
                     await self.broadcast(payload)
 
                     # Handle pending Gemini verification (wait for aftermath)
@@ -661,6 +735,10 @@ class PipelineService:
                     await asyncio.sleep(0.001)  # yield to event loop
 
                 cap.release()
+                
+                # RE-ENABLE REAL MICROPHONE FOR FUTURE CAMERA USAGE / DEFAULT STATE
+                if audio_data is not None or is_custom_clip:
+                    self.audio_stream.start_stream()
 
                 # Save the last frame so we can keep broadcasting it during
                 # tail-wait and post-alert hold (screen must not go blank).
@@ -898,6 +976,285 @@ class PipelineService:
         await self.broadcast({"type": "demo_complete"})
         self.running = False
 
+    async def _play_live_feed(self, pat):
+        self._active_patient = f"{pat.name} ({pat.room})"
+        await self.broadcast({
+            "type": "segment_start",
+            "patient": self._active_patient,
+            "label": "LIVE EDGE HARDWARE",
+            "progress": "LIVE",
+            "seg_type": "normal"
+        })
+        print(f"  [System] Live Hardware Mode via VideoCapture(0, DSHOW) Started!")
+        # Windows built-in laptop cameras drop out on MSMF, use explicitly stable DSHOW.
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            print("  [Error] Cannot access laptop camera! Falling back to MSMF...")
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                print("  [Error] Cannot access any camera on index 0!")
+                return
+        
+        # Enforce conservative 640x480 resolution to prevent bandwidth crashes
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            
+        self.audio_stream.start_stream()
+        
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        keep_every = max(1, round(fps / FPS_TARGET))
+        
+        raw_frame_idx = 0
+        frame_buffer = collections.deque(maxlen=90)
+        fall_sm = sz_sm = 0.0
+        top2_fall = []
+        top2_sz = []
+        alert_counter = 0
+        pending_gemini_alert = None
+        future_frame_counter = 0
+        
+        consolidator = SegmentConsolidator("normal")
+        
+        while self.running:
+            if self.paused and not self.skip_requested:
+                await asyncio.sleep(0.1)
+                continue
+            if self.skip_requested:
+                self.skip_requested = False
+                break
+                
+            t0 = time.time()
+            ret, frame = cap.read()
+            if not ret: 
+                print("  [Warn] Camera frame dropped. Retrying...")
+                await asyncio.sleep(0.1)
+                continue
+            
+            raw_frame_idx += 1
+            if (raw_frame_idx - 1) % keep_every != 0: continue
+            
+            frame_buffer.append(frame.copy())
+            self._risk_frame_buffer.append(frame.copy())
+            
+            event = self.pipeline.process_frame(frame)
+            fall_sm = event.get('fall_smoothed', fall_sm)
+            sz_sm   = event.get('seizure_smoothed', sz_sm)
+            
+            raw_fall = self.pipeline.fall_classifier._last_fall_prob if self.pipeline.fall_classifier else 0.0
+            raw_sz   = self.pipeline.seizure_classifier._last_seizure_prob if self.pipeline.seizure_classifier else 0.0
+            top2_fall = sorted(top2_fall + [raw_fall], reverse=True)[:2]
+            top2_sz   = sorted(top2_sz   + [raw_sz],   reverse=True)[:2]
+            top2_fall_mean = sum(top2_fall) / len(top2_fall) if top2_fall else 0.0
+            top2_sz_mean   = sum(top2_sz)   / len(top2_sz) if top2_sz else 0.0
+            
+            event_for_consolidator = dict(event)
+            event_for_consolidator['fall_smoothed']      = top2_fall_mean
+            event_for_consolidator['seizure_smoothed']   = top2_sz_mean
+            event_for_consolidator['seizure_confidence'] = top2_sz_mean
+            
+            _, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+            b64 = base64.b64encode(buf).decode('utf-8')
+            
+            payload = {
+                "type":         "frame_update",
+                "frame_b64":    b64,
+                "fall_risk":    fall_sm,
+                "seizure_risk": sz_sm,
+                "fps":          round(1.0 / max(0.0001, time.time() - t0)),
+            }
+            
+            should_fire, fired_type, fired_conf = consolidator.update(event_for_consolidator)
+            if should_fire and not pending_gemini_alert:
+                alert_counter += 1
+                try:
+                    from scripts.demo.database import IncidentLog, SessionLocal
+                    db_log = SessionLocal()
+                    new_log = IncidentLog(patient_id=pat.id, incident_type=fired_type, confidence=fired_conf)
+                    db_log.add(new_log)
+                    db_log.commit()
+                    db_log.close()
+                except Exception: pass
+
+                payload["alert"] = {
+                    "type":       "alert_fired",
+                    "alert_id":   alert_counter,
+                    "event_type": fired_type,
+                    "confidence": fired_conf,
+                    "timestamp":  time.strftime("%H:%M:%S"),
+                }
+                pending_gemini_alert = {
+                    "aid":         alert_counter,
+                    "etype":       fired_type,
+                    "conf":        fired_conf,
+                    "pat":         self._active_patient,
+                    "past_frames": list(frame_buffer),
+                }
+            await self.broadcast(payload)
+                
+            if pending_gemini_alert:
+                future_frame_counter += 1
+                if future_frame_counter >= 30:
+                    past     = pending_gemini_alert["past_frames"]
+                    future   = list(frame_buffer)
+                    combined = past + future
+                    step     = max(1, len(combined) // 8)
+                    frames_to_send = combined[::step][-8:]
+                    asyncio.create_task(self.execute_gemini_job(
+                        pending_gemini_alert["aid"],
+                        pending_gemini_alert["etype"],
+                        pending_gemini_alert["conf"],
+                        pending_gemini_alert["pat"],
+                        frames_to_send,
+                    ))
+                    pending_gemini_alert = None
+                    future_frame_counter = 0
+
+            # Yield smoothly
+            await asyncio.sleep(0.005)
+
+        cap.release()
+        await self.broadcast({"type": "demo_complete"})
+        self.running = False
+
+
+# ─────────────────────────────────────────────────────
+# AUDITORY MONITOR
+# ─────────────────────────────────────────────────────
+class AuditoryMonitor:
+    def __init__(self, service: PipelineService):
+        self.service = service
+        self.service.audio_stream.start_stream()
+        import collections
+        import time
+        self.audio_history = collections.deque(maxlen=50)
+
+    async def run_forever(self):
+        self.loop = asyncio.get_running_loop()
+        while True:
+            await asyncio.sleep(0.1)
+            # Process audio whenever the dashboard is open, even if video is paused/missing!
+            if len(self.service.active_websockets) == 0:
+                continue
+
+            chunk_data = self.service.audio_stream.get_latest_chunk(timeout=0.0)
+            if chunk_data is not None:
+                chunk, new_stride = chunk_data
+                should_analyze, speech_clip = self.service.privacy_shield.analyze_chunk(new_stride)
+                
+                if should_analyze:
+                    # Run synchronously in threadpool so it doesn't block WebSocket stream
+                    future_distress = self.service.audio_executor.submit(self.service.distress_classifier.analyze_chunk, chunk)
+                    future_distress.add_done_callback(self._handle_distress_result)
+                    
+                    if speech_clip is not None:
+                        future_kws = self.service.audio_executor.submit(self.service.keyword_spotter.analyze_chunk, speech_clip)
+                        future_kws.add_done_callback(self._handle_kws_result)
+
+    def _handle_distress_result(self, future):
+        try:
+            result = future.result()
+            if result.get("event_detected"):
+                conf = result.get("details", [{}])[0].get("confidence", 1.0)
+                sound_type = result.get("primary_sound")
+                score = result.get("severity_score", 2)
+                
+                # Append to history buffer
+                self.audio_history.append({"time": time.time(), "sound": sound_type, "score": score, "src": "YAMNet"})
+                
+                # Compute rolling score over last 15 seconds
+                now = time.time()
+                recent_history = [x for x in self.audio_history if now - x["time"] <= 15.0]
+                total_score = sum(x["score"] for x in recent_history)
+                
+                print(f"  [Audio Accumulator] {sound_type} (+{score}). Rolling Score: {total_score}/10")
+                
+                # 1. UI THRESHOLD (Very Low): Log everything instantly to UI History
+                if score >= 1:
+                    try:
+                        db_log = SessionLocal()
+                        # Get active patient ID by querying DB with the name we stored
+                        pat = db_log.query(Patient).filter(Patient.name == self.service._active_patient).first()
+                        p_id = pat.id if pat else 1
+                        
+                        new_log = IncidentLog(patient_id=p_id, incident_type=f"AUDIO: {sound_type}", confidence=conf)
+                        db_log.add(new_log)
+                        db_log.commit()
+                        db_log.close()
+                    except Exception as e:
+                        print(f'DB Log Error: {e}')
+                        
+                    alert_id = int(time.time() * 1000) % 1000000
+                    payload = {
+                        "type": "audio_alert",
+                        "alert_id": alert_id,
+                        "event_type": "Distress Audio",
+                        "sound_type": sound_type,
+                        "confidence": conf,
+                        "timestamp": time.strftime("%H:%M:%S")
+                    }
+                    asyncio.run_coroutine_threadsafe(self.service.broadcast(payload), self.loop)
+
+                # 2. LLM THRESHOLD (Very High): Use continuous history metrics exclusively for Gemini
+                if total_score >= 10:
+                    alert_id = int(time.time() * 1000) % 1000000
+                    timeline_str = " | ".join([f"[{time.strftime('%H:%M:%S', time.localtime(x['time']))}] {x['sound']} (S{x['score']})" for x in recent_history])
+                    print(f"  *** LLM TRIGGERED: Accumulated Auditory Distress -> {timeline_str}")
+                    
+                    self.audio_history.clear()
+                    
+                    frames = list(self.service._risk_frame_buffer)
+                    frames_to_send = []
+                    if len(frames) > 0:
+                        step = max(1, len(frames) // 8)
+                        frames_to_send = frames[::step][-8:]
+                    
+                    asyncio.run_coroutine_threadsafe(
+                        self.service.execute_gemini_job(alert_id, f"Accumulated Auditory Distress Timeline: {timeline_str}", conf, self.service._active_patient, frames_to_send),
+                        self.loop
+                    )
+        except Exception as e:
+            print(f"Distress Handle Error: {e}")
+
+    def _handle_kws_result(self, future):
+        try:
+            result = future.result()
+            if result.get("event_detected"):
+                spoken_text = result.get("text")
+                
+                self.audio_history.append({"time": time.time(), "sound": f"Spoken: '{spoken_text}'", "score": 10, "src": "Whisper"})
+                
+                now = time.time()
+                recent_history = [x for x in self.audio_history if now - x["time"] <= 15.0]
+                timeline_str = " | ".join([f"[{time.strftime('%H:%M:%S', time.localtime(x['time']))}] {x['sound']}" for x in recent_history])
+                
+                alert_id = int(time.time() * 1000) % 1000000
+                payload = {
+                    "type": "audio_alert",
+                    "alert_id": alert_id,
+                    "event_type": "Keyword Spoken",
+                    "sound_type": spoken_text,
+                    "confidence": 1.0,
+                    "timestamp": time.strftime("%H:%M:%S")
+                }
+                print(f"  *** ALERT: KEYWORD THRESHOLD BROKEN -> {spoken_text}")
+                
+                self.audio_history.clear()
+                
+                frames = list(self.service._risk_frame_buffer)
+                frames_to_send = []
+                if len(frames) > 0:
+                    step = max(1, len(frames) // 8)
+                    frames_to_send = frames[::step][-8:]
+                
+                asyncio.run_coroutine_threadsafe(
+                    self.service.execute_gemini_job(alert_id, f"Patient Speech transcript with preceding context: {timeline_str}", 0.90, self.service._active_patient, frames_to_send),
+                    self.loop
+                )
+                asyncio.run_coroutine_threadsafe(self.service.broadcast(payload), self.loop)
+        except Exception as e:
+            print(f"Keyword Handle Error: {e}")
+
+
 
 # ─────────────────────────────────────────────────────
 # PROACTIVE RISK MONITOR
@@ -1001,6 +1358,11 @@ async def websocket_endpoint(websocket: WebSocket):
             service_instance.proactive_started = True
             risk_monitor = ProactiveRiskMonitor(service_instance)
             asyncio.create_task(risk_monitor.run_forever())
+
+        if not hasattr(service_instance, 'auditory_started'):
+            service_instance.auditory_started = True
+            auditory_monitor = AuditoryMonitor(service_instance)
+            asyncio.create_task(auditory_monitor.run_forever())
 
         while True:
             try:
