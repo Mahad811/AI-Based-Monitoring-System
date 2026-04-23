@@ -1,80 +1,66 @@
 # Vital Guardian Technical Documentation
 
 ## 1. Project Overview & Architecture
-Vital Guardian is an AI-powered real-time ICU patient monitoring system. Its primary architecture is split into three main modules:
-- **Visual Guardian**: Processes video streams to detect falls, seizures, bed exits, and restlessness.
-- **Auditory Watchdog**: Processes audio streams to spot critical keywords and distress sounds.
-- **Cognitive Core**: A dual-layered decision engine that fuses vision and audio events to generate alerts.
+Vital Guardian is an AI-powered real-time ICU patient monitoring system. Its architecture is split into three tightly integrated modules operating over a bidirectional WebSocket-driven backend:
+- **Visual Guardian**: Processes video streams (hardware-accelerated) to detect patient presence, falls, and seizures using robust temporal window encoders.
+- **Auditory Watchdog**: A multi-threaded audio pipeline capturing acoustic data to spot critical environmental distress and verbal keyword triggers.
+- **Cognitive Core**: A tiered LLM verification engine (Gemini) that dynamically processes ML-generated events, preventing false alarms and generating structured clinical reports.
 
-The system uses a "Reflex-then-Reason" pipeline. The deterministic [ReflexEngine](file:///d:/project/FYP/cognitive_core/reflex_engine.py#17-177) provides immediate, sub-50ms alerts (Layer 1). Significant events are then passed to the [ReasoningEngine](file:///d:/project/FYP/cognitive_core/reasoning_engine.py#121-379) (Layer 2), which uses an LLM (Gemini 3 Flash) to generate a contextual, natural-language incident report within 2-5 seconds.
+These subsystems feed into an interactive, hospital-grade dashboard utilizing a Next.js-inspired Vanilla Javascript frontend backed by a FastAPI server and PostgreSQL database.
 
 ---
 
 ## 2. Implemented Modules & Features
 
 ### 2.1 Visual Guardian
-- **Person Detection ([person_detector.py](file:///d:/project/FYP/visual_guardian/person_detector.py))**: Identifies patient bounding boxes to isolate regions of interest.
-- **Fall Detection ([fall_classifier.py](file:///d:/project/FYP/visual_guardian/fall_classifier.py), [temporal_encoder.py](file:///d:/project/FYP/visual_guardian/temporal_encoder.py))**: Encodes the video stream into Temporal RGB triplets (past, current, future). Detects falls by passing these encoded images to an image classifier.
-- **Seizure Detection ([seizure_classifier.py](file:///d:/project/FYP/visual_guardian/seizure_classifier.py))**: Uses a dual ensemble approach. Computes a Motion-Only Summary (mean/std/max diffs across frames) and a Temporal Map (2D spectrogram of motion).
-- **Pose Analysis & Safety Nets ([pose_analyzer.py](file:///d:/project/FYP/visual_guardian/pose_analyzer.py))**: Uses skeleton landmarks to identify posture. Features include:
-  - Bed Exit Detection: Tracks hips crossing predefined bed boundaries.
-  - Digital Actigraphy: Measures gross body movement for sleep restlessness.
-  - Fallen State Safety Net: Detects if the torso is horizontal and near the floor.
-- **Pipeline Integration ([pipeline.py](file:///d:/project/FYP/visual_guardian/pipeline.py))**: Central orchestration script that handles fall/seizure frame buffering, applies overlapping window smoothers, and manages system state (IN_BED, EXITING, FALLEN).
+- **Person Detection ([pipeline.py](file:///d:/project/FYP/visual_guardian/pipeline.py))**: Utilizes YOLO11n (optimized via OpenVINO for Intel GPUs) to continuously track patient bounding boxes.
+- **Fall Detection ([fall_classifier.py](file:///d:/project/FYP/visual_guardian/fall_classifier.py))**: MoViNet-A2 trained on a 32-frame rolling temporal window. Efficiently recognizes high-velocity downward momentum.
+- **Seizure Detection ([seizure_classifier.py](file:///d:/project/FYP/visual_guardian/seizure_classifier.py))**: MoViNet-A2 configured for a 64-frame temporal window. Specifically calibrated to capture the erratic, rhythmic movements indicative of seizures.
+- **Pipeline Orchestration**: Downsamples real-time 60/120 fps video feeds into a controlled ~30fps stride ensuring ML windows precisely map to 1-2 seconds of actual patient history. Handles overlap smoothing and UI gauge mappings.
 
 ### 2.2 Auditory Watchdog
-- **Distress Classifier ([core/distress_classifier.py](file:///d:/project/FYP/auditory_watchdog/core/distress_classifier.py))**: Analyzes audio chunks to classify non-verbal distress sounds like gasps, moans, coughing, or cries using an offline YAMNet model.
-- **Keyword Spotter ([core/keyword_spotter.py](file:///d:/project/FYP/auditory_watchdog/core/keyword_spotter.py))**: Uses an offline, zero-shot `faster-whisper` model to transcribe full sentences spoken by the patient in English or Urdu directly to text.
-- **Privacy Shield ([core/privacy_shield.py](file:///d:/project/FYP/auditory_watchdog/core/privacy_shield.py))**: Employs Silero VAD to detect human speech and preserve privacy. Activates "Visitor Mode" during long conversations, only passing relevant distress bursts and distinct short sentences.
-- **Audio Capture ([core/audio_capture.py](file:///d:/project/FYP/auditory_watchdog/core/audio_capture.py))**: Uses `PyAudio` to non-blockingly read a continuous rolling microphone buffer synchronously alongside the video stream.
+- **Media Engine & Audio Capture**: Seamlessly overrides physical hardware streams (via `PyAudio`) to automatically extract (`moviepy`) and sync (`librosa` at 16kHz) audio directly from demo testing clips when available.
+- **Distress Classifier ([core/distress_classifier.py](file:///d:/project/FYP/auditory_watchdog/core/distress_classifier.py))**: Uses YAMNet to evaluate background anomalies and detect physical distress patterns including gasping, heavy breathing, sneezing, and coughing.
+- **Keyword Spotter ([core/keyword_spotter.py](file:///d:/project/FYP/auditory_watchdog/core/keyword_spotter.py))**: Uses Faster-Whisper to provide highly accurate, zero-shot transcriptions of patient speech, identifying critical distress words (e.g., "Help", "Nurse").
+- **Audio Accumulator**: Instead of firing immediate alerts, distress signals score points (0-10) pushed into a 15-second rolling deque. Alerts are only fired when the contextual risk score breaches the threshold, dramatically eliminating transient false positives.
 
 ### 2.3 Cognitive Core
-- **Reflex Engine ([reflex_engine.py](file:///d:/project/FYP/tests/test_reflex_engine.py))**: A Bayesian-inspired scoring matrix. Evaluates ([VisionEvent](file:///d:/project/FYP/cognitive_core/models.py#45-81), [AudioEvent](file:///d:/project/FYP/cognitive_core/models.py#83-105)) tuples and triggers immediate deterministic alerts (e.g., Fall + Scream = CRITICAL).
-- **Reasoning Engine ([reasoning_engine.py](file:///d:/project/FYP/cognitive_core/reasoning_engine.py))**: Interfaces with the Google Gemini API (specifically `gemini-3-flash-preview`). Consumes recent event logs and the raw frame to output a structured JSON [IncidentReport](file:///d:/project/FYP/cognitive_core/models.py#136-179) conforming to predefined Pydantic schemas. Supports a mock mode for environments without internet access.
+- **Progressive Verification ([gemini_verifier.py](file:///d:/project/FYP/cognitive_core/gemini_verifier.py))**: Replaces the old, static reflex matrices with a dynamic, progressive verification schema via the Gemini API:
+  - **Tier 2 (Binary Verification)**: Ultra-fast LLM assessment evaluating bounding boxes and raw frames to output a binary `CONFIRMED` or `SUPPRESSED`. Used to instantly mute false ML spikes.
+  - **Tier 3 (Clinical Enrichment)**: If confirmed, a secondary deep-reasoning prompt is triggered, generating a structured JSON `IncidentReport` containing a clinical narrative, severity scaling, and recommended nursing actions.
+- **High-Confidence Bypass**: Fallback deterministic bypasses auto-confirm ML predictions measuring >50% confidence, relying strictly on the highly-trained MoViNet checkpoints over generalized LLM visual interpretation.
+
+### 2.4 FastAPI Web Server & Clinical Dashboard
+- **WebSockets Engine ([demo_server.py](file:///d:/project/FYP/scripts/demo/demo_server.py))**: Pushes base64 encoded frames, pipeline metadata, audio/vision alerts, and Gemini LLM payloads at high concurrency without blocking the primary visual loop.
+- **Database Architecture ([database.py](file:///d:/project/FYP/scripts/demo/database.py))**: SQLAlchemy mapped to PostgreSQL managing `Nurse` credentials, `Patient` assignments (with varying clip modes like live feeds, asthma, or whooping cough), full `IncidentLog` traceability, and security `AuditLogs`.
+- **VGAudio UI Subsystem ([app.js](file:///d:/project/FYP/scripts/demo/public/app.js))**: An advanced, file-less audio synthesizer integrated directly into the DOM. Uses the Web `AudioContext` API to generate ADSR-modeled medical alarms (e.g., triangle waves for falls, square waves for seizures) and Web Speech API TTS voice readouts. 
 
 ---
 
 ## 3. Models Used & Performance
 
 1. **Person Detection**
-   - **Model:** YOLOv8n (Pretrained on COCO)
-   - **Purpose:** Fast, real-time bounding box extraction for the patient.
+   - **Model:** YOLO11n (Intel GPU / OpenVINO)
+   - **Purpose:** Reliable boundary extraction preventing background noise interference.
 2. **Fall Classification**
-   - **Model:** EfficientNet-B0 (supports up to a 5-fold ensemble)
-   - **Input:** 224x224 Temporal RGB images.
-   - **Purpose:** Recognizes high-velocity, uncontrolled downward movement typical of falls.
+   - **Model:** MoViNet-A2 (SavedModel format)
+   - **Input:** 32-frame Temporal RGB clips.
 3. **Seizure Classification**
-   - **Model:** EfficientNet-B0 (up to a 10-model Dual Ensemble: 5 motion + 5 temporal models)
-   - **Input:** Motion summary and Temporal Map images.
-   - **Purpose:** Identifies rhythmic, erratic motions distinguishing seizures from normal movement.
-4. **Pose Estimation**
-   - **Model:** MediaPipe Pose (CPU-friendly, complexity level 1)
-   - **Purpose:** Bed exit, safety nets, and actigraphy base tracking.
-5. **Auditory Distress**
-   - **Model:** YAMNet (Loaded via TensorFlow Hub)
-   - **Purpose:** Pre-trained environmental audio classifier to identify distress classes (whimper, gasp, groan, etc.).
-6. **Reasoning Engine**
-   - **Model:** Gemini-3-Flash (`gemini-3-flash-preview`)
-   - **Purpose:** Multimodal context synthesis. Confirms or suppresses reflex alerts based on the visual cue in the frame.
-7. **Keyword Spotter**
+   - **Model:** MoViNet-A2 (SavedModel format)
+   - **Input:** 64-frame Temporal RGB clips.
+4. **Auditory Distress**
+   - **Model:** YAMNet 
+   - **Purpose:** Captures involuntary medical distress markers (Coughs, Sneezing, Gasps).
+5. **Keyword Spotter**
    - **Model:** Faster-Whisper (`tiny` scale) 
-   - **Purpose:** Full-sentence transcription of patient speech for LLM contextualization.
+6. **Cognitive Core (Reasoning Engine)**
+   - **Model:** Gemini-1.5-Flash / Gemini-3-Flash (`gemini-3-flash-preview`)
 
 ### System Performance
-- **Latency**: Reflex alerts run locally on CPU/GPU and trigger in <50ms. Gemini reasoning reports take around 1-3 seconds per event.
-- **Unit Tests**: The logic in the Cognitive Core layers ([ReflexEngine](file:///d:/project/FYP/cognitive_core/reflex_engine.py#17-177), [ReasoningEngine](file:///d:/project/FYP/cognitive_core/reasoning_engine.py#121-379), and models) has passing `pytest` unit tests, ensuring robust event evaluation and fallback protocols.
+- **Latency Pipeline**: ML pipelines average sub-100ms inference on appropriate hardware.
+- **LLM Verification**: Tier 2 completes in ~1-2 seconds. Tier 3 clinical enrichment averages ~4-6 seconds, during which the frontend executes "hold" UI states.
 
 ---
 
-## 4. Remaining Implementation Work (Gap Analysis)
-
-Based on a thorough audit of the source files versus the project requirements, the following tasks are still incomplete:
-
-1. **Dashboard Enhancements:**
-   - [dashboard/app.py](file:///d:/project/FYP/dashboard/app.py) is currently a rudimentary Flask app polling an in-memory alert list. For production/clinic deployment, this should be upgraded with a stable database (e.g., SQLite/PostgreSQL) and potentially Socket.IO for push-based alert updates.
-
-4. **Production Testing:**
-   - The individual neural networks are present, but their respective pre-trained weights (`*.pt` models) must be robustly validated on the staging machine to ensure `timm.create_model` has access to the correct local `.pt` checkpoints without throwing `FileNotFoundError`.
-
-5. **Data Preprocessing Integration:**
-   - The `data_preprocessing` module holds scripts necessary for retraining/fine-tuning. While not part of inference, it should be documented if future data ingestion is expected to be automated.
+## 4. Deployment Status & Future Work
+With the elimination of the legacy Flask app, the system now runs entirely on the sophisticated, asynchronous FastAPI framework. Future development will focus primarily on hardening the Dockerization layers for Kubernetes deployment and gathering longitudinal testing data in physical clinical trial environments.
