@@ -1,0 +1,72 @@
+services:
+
+  # ── PostgreSQL database ──────────────────────────────────────────────────────
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1234"
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Vital Guardian application ────────────────────────────────────────────────
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # .env supplies user-specific secrets (INFERENCE_MODE, KAGGLE_ENDPOINT,
+    # GEMINI_API_KEY).  The environment block below adds container-specific
+    # overrides that always apply regardless of .env contents.
+    env_file:
+      - .env
+    environment:
+      # Point the app at the db service (overrides any localhost URL in .env)
+      DATABASE_URL: postgresql://postgres:1234@db:5432/postgres
+      # Force OpenVINO onto CPU — Intel iGPU passthrough is not available
+      # in WSL2/Docker on Windows.
+      OPENVINO_DEVICE: intel:cpu
+      # Silence Ultralytics config-dir warning (no /root/.config writable in container)
+      YOLO_CONFIG_DIR: /tmp/.ultralytics
+      # YOLO person detector: run inference every N frames.
+      # bare-metal iGPU handles every-frame (1) fine; CPU-only Docker needs higher
+      # value to keep FPS stable. 4 = ~7.5 YOLO calls/sec at 30fps target.
+      PERSON_DETECTOR_PROCESS_EVERY: "4"
+      # No real microphone device inside the container.
+      MIC_ENABLED: "false"
+      # Audio analytics (YAMNet/Whisper) still run: pre-recorded clip audio is
+      # injected into the queue stub, so distress detection works on video clips.
+      AUDIO_ANALYTICS_ENABLED: "true"
+
+    volumes:
+      # ── Model files (read-only) ──────────────────────────────────────────────
+      # Mounted from host so the image stays model-agnostic and models can be
+      # swapped without rebuilding.  Only needed for INFERENCE_MODE=LOCAL.
+      - ./fall_detection:/app/fall_detection:ro
+      - ./seizure_detection:/app/seizure_detection:ro
+      - ./yolo11n_openvino_model:/app/yolo11n_openvino_model:ro
+
+      # ── Demo video clips (read-only) ─────────────────────────────────────────
+      - ./demo_dataset:/app/demo_dataset:ro
+
+      # ── Writable outputs ─────────────────────────────────────────────────────
+      # Incident frame snapshots written by demo_server.py must persist and
+      # be served as static files by FastAPI.
+      - ./scripts/demo/public/incidents:/app/scripts/demo/public/incidents
+
+      # Audio clips copied for browser playback
+      - ./scripts/demo/public/audio:/app/scripts/demo/public/audio
+
+volumes:
+  postgres_data:

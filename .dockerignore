@@ -1,0 +1,58 @@
+# ── Vital Guardian — .dockerignore ────────────────────────────────────────────
+# Excludes files/directories that must NOT be baked into the Docker image.
+# Models are volume-mounted at runtime; secrets stay on the host.
+
+# ── Python runtime artefacts ─────────────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── ML model binaries (mounted as volumes at runtime) ────────────────────────
+*.keras
+*.pt
+*.pth
+*.h5
+fall_detection/fall_savedmodel/
+fall_detection/fall_model_best.keras
+seizure_detection/seizure_savedmodel/
+seizure_detection/seizure_model_best.keras
+
+# Audio models (re-downloaded on first run if AUDIO_ENABLED=true)
+auditory_watchdog/models/
+
+# ── Large data / notebooks ────────────────────────────────────────────────────
+datasets/
+demo_dataset/
+notebooks/
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Dev / CI artefacts ────────────────────────────────────────────────────────
+.env
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Evaluation reports (large JSON outputs)
+fall_detection/report_eval/
+seizure_detection/report_eval/
+
+# Preprocessed training datasets
+fall_detection/clips/
+seizure_detection/clips/
+
+# IDE / editor config
+.cursor/
+.vscode/
+*.code-workspace

@@ -1,8 +1,12 @@
+import os
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, inspect as sa_inspect
 from sqlalchemy.sql import func, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "postgresql://postgres:1234@localhost:5432/postgres"
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:1234@localhost:5432/postgres"
+)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

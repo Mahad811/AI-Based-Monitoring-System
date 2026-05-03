@@ -11,6 +11,7 @@ pillow>=10.0.0
 
 # Computer Vision
 ultralytics>=8.0.0          # YOLOv8
+openvino>=2024.0.0          # OpenVINO runtime (YOLO CPU/GPU inference — baked in to avoid runtime auto-install)
 mediapipe>=0.10.0           # Pose estimation
 tf_keras>=2.14.0            # MoViNet backend requirement
 
@@ -32,6 +33,8 @@ flask>=2.3.0                # Dashboard backend
 fastapi>=0.110.0            # Demo server API
 uvicorn>=0.29.0             # ASGI server
 httpx>=0.27.0               # Async HTTP client (health-check endpoint)
+sqlalchemy>=2.0.0           # ORM for incident/patient/audit DB
+psycopg2-binary>=2.9.0      # PostgreSQL driver for SQLAlchemy
 
 # Utilities
 pyyaml>=6.0                 # Configuration management
