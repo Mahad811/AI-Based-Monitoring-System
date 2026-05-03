@@ -50,7 +50,7 @@
 
 ```bash
 # Activate environment
-d:\project\FYP\venv\Scripts\Activate.ps1
+d:\project\FYP_new\venv\Scripts\Activate.ps1
 
 # Run preprocessing (creates seizure_classification_v3/ dataset)
 python scripts/prepare_seizure_classification.py
@@ -102,8 +102,8 @@ Compress-Archive -Path seizure_classification -DestinationPath seizure_classific
 # Extract seizure_v3_ensemble.zip
 
 # Move fold models to project
-mkdir d:\project\FYP\seizure_detection\weights
-mv fold*.pt d:\project\FYP\seizure_detection\weights\
+mkdir d:\project\FYP_new\seizure_detection\weights
+mv fold*.pt d:\project\FYP_new\seizure_detection\weights\
 ```
 
 **Structure:**

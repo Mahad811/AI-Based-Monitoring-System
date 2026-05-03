@@ -92,6 +92,15 @@ ENABLE_PROACTIVE_MONITOR = False
 INFERENCE_MODE   = os.getenv("INFERENCE_MODE", "LOCAL").upper()
 KAGGLE_ENDPOINT  = os.getenv("KAGGLE_ENDPOINT", "").strip()
 
+# ── Audio flags ───────────────────────────────────────────────────────────────
+# MIC_ENABLED            — open the real host microphone device.
+#                          Set false in Docker (no mic hardware available).
+# AUDIO_ANALYTICS_ENABLED — run YAMNet / Whisper models + AuditoryMonitor.
+#                          Can stay true in Docker: pre-recorded clip audio is
+#                          injected via the queue; no mic device needed.
+MIC_ENABLED             = os.getenv("MIC_ENABLED",             "true").lower() not in ("false", "0", "no")
+AUDIO_ANALYTICS_ENABLED = os.getenv("AUDIO_ANALYTICS_ENABLED", "true").lower() not in ("false", "0", "no")
+
 # ─────────────────────────────────────────────────────
 # AUTO-DISCOVER DEMO CLIPS
 # ─────────────────────────────────────────────────────
@@ -568,6 +577,45 @@ def move_models_to_gpu(pipeline):
 
 
 # ─────────────────────────────────────────────────────
+# MIC-DISABLED AUDIO STREAM STUB
+# ─────────────────────────────────────────────────────
+class _MicDisabledAudioStream:
+    """
+    Drop-in replacement for AudioStream when MIC_ENABLED=false.
+
+    Exposes the same queue/control interface as the real AudioStream so that:
+      - Pre-recorded clip audio injection (put_nowait) works normally.
+      - AuditoryMonitor.run_forever() can read injected chunks via get_latest_chunk().
+      - stop_stream() / start_stream() calls are safe no-ops.
+
+    Never opens a PyAudio device, so it is safe inside Docker containers
+    that have no audio hardware.
+    """
+    import queue as _q
+
+    def __init__(self):
+        import queue as _q
+        self.audio_queue    = _q.Queue(maxsize=1)
+        self.is_running     = False
+
+    def start_stream(self):
+        pass
+
+    def stop_stream(self):
+        self.is_running = False
+
+    def get_latest_chunk(self, timeout=None):
+        import queue as _q
+        try:
+            return self.audio_queue.get(timeout=timeout if timeout else 0)
+        except _q.Empty:
+            return None
+
+    def terminate(self):
+        pass
+
+
+# ─────────────────────────────────────────────────────
 # PIPELINE SERVICE
 # ─────────────────────────────────────────────────────
 class PipelineService:
@@ -597,7 +645,10 @@ class PipelineService:
 
         # Override YOLO frame-skip so every frame gets a fresh bounding box.
         # Accuracy >> speed here since OpenVINO GPU handles YOLO fast anyway.
-        self.pipeline.person_detector.process_every = 1
+        # On Intel iGPU (bare metal) every-frame YOLO is fast.
+        # On CPU-only Docker the same setting tanks FPS — use env override.
+        _pe = int(os.getenv("PERSON_DETECTOR_PROCESS_EVERY", "1"))
+        self.pipeline.person_detector.process_every = _pe
 
         print("Initializing Gemini API Verifier...")
         self.gemini = GeminiVerifier(mock_mode=False)
@@ -611,12 +662,30 @@ class PipelineService:
         self._risk_frame_buffer = collections.deque(maxlen=90)  # last 3s @ 30fps
         self._active_patient    = "Patient"
 
-        print("Initializing Auditory Watchdog components...")
-        self.audio_stream = AudioStream()
-        self.privacy_shield = PrivacyShield()
-        self.distress_classifier = DistressClassifier()
-        self.keyword_spotter = KeywordSpotter()
-        self.audio_executor = ThreadPoolExecutor(max_workers=2)
+        # Audio stream — always required so pre-recorded clip audio can be
+        # injected into the queue for AuditoryMonitor to consume.
+        # When MIC_ENABLED=false we use a stub that never opens a PyAudio device.
+        if MIC_ENABLED:
+            print("Initializing live microphone stream...")
+            self.audio_stream = AudioStream()
+        else:
+            print("Mic disabled (MIC_ENABLED=false) — using stub queue for clip audio injection.")
+            self.audio_stream = _MicDisabledAudioStream()
+
+        # Audio analytics models — can run even without a real mic because
+        # pre-recorded clip chunks are injected directly into the queue above.
+        if AUDIO_ANALYTICS_ENABLED:
+            print("Initializing Auditory Watchdog analytics (YAMNet / Whisper)...")
+            self.privacy_shield      = PrivacyShield()
+            self.distress_classifier = DistressClassifier()
+            self.keyword_spotter     = KeywordSpotter()
+            self.audio_executor      = ThreadPoolExecutor(max_workers=2)
+        else:
+            print("Audio analytics disabled (AUDIO_ANALYTICS_ENABLED=false).")
+            self.privacy_shield      = None
+            self.distress_classifier = None
+            self.keyword_spotter     = None
+            self.audio_executor      = None
         # Tells AuditoryMonitor whether a pre-recorded audio clip is active.
         # True  → Whisper (KWS) is suppressed; vision pipeline is bypassed.
         # False → normal behaviour (live feed, vision segments).
@@ -1881,7 +1950,7 @@ async def websocket_endpoint(websocket: WebSocket):
             risk_monitor = ProactiveRiskMonitor(service_instance)
             asyncio.create_task(risk_monitor.run_forever())
 
-        if not hasattr(service_instance, 'auditory_started'):
+        if AUDIO_ANALYTICS_ENABLED and not hasattr(service_instance, 'auditory_started'):
             service_instance.auditory_started = True
             service_instance.auditory_monitor = AuditoryMonitor(service_instance)
             asyncio.create_task(service_instance.auditory_monitor.run_forever())

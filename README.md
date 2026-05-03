@@ -1,74 +1,73 @@
-# Vital Guardian: AI-Powered ICU Patient Monitoring System
+# Vital Guardian: ICU Patient Monitoring System
 
-**Vital Guardian** is a real-time, multimodal monitoring system designed to detect critical events (Falls, Seizures, Distress) in ICU environments. It fuses hardware-accelerated computer vision and concurrent auditory analysis with a cognitive reasoning engine to minimize false alarms and provide context-aware, progressive alerts to nursing staff.
+Vital Guardian is a real-time multimodal monitoring system for ICU scenarios. It combines:
 
----
+- vision inference (fall, seizure, person detection),
+- audio distress analysis,
+- Gemini-based verification and clinical enrichment,
+- a FastAPI/WebSocket dashboard with PostgreSQL persistence.
 
-## 🚀 System Architecture
+## Current Runtime Model
 
-### 1. Visual Guardian (Vision Module 3.0)
-*   **Fall Detection:** MoViNet-A2 (32-frame temporal window) running via TensorFlow SavedModel.
-*   **Seizure Detection:** MoViNet-A2 (64-frame temporal window) optimized for rhythmic anomalies.
-*   **Person Detection:** YOLO11n optimized via OpenVINO for Intel GPU hardware acceleration.
-*   **Safety Net:** Logic-based state tracking (Bed Exit, Restlessness, Patient Pose Tracking).
+- **Vision person detection:** YOLO11n (OpenVINO backend).
+- **Fall and seizure classifiers:** MoViNet-based models, either:
+  - `INFERENCE_MODE=LOCAL` (local model files), or
+  - `INFERENCE_MODE=KAGGLE` (remote endpoint via `KAGGLE_ENDPOINT`).
+- **Audio pipeline:** distress + keyword analysis with support for injected audio from demo clips.
+- **Cognitive pipeline:** Tier-2 confirm/suppress and Tier-3 enriched report.
 
-### 2. Auditory Watchdog (Audio Module)
-*   **Distress Classification:** Dual-threaded PyAudio ingestion feeding YAMNet to classify non-verbal distress cues (Gasps, Coughing, Sneezing, Thuds).
-*   **Keyword Spotting:** Faster-Whisper integration to accurately transcribe critical speech ("Help", "Nurse").
-*   **Audio Accumulator:** A temporal scoring mechanism calculating a rolling severity score over a 15-second contextual window to mitigate false-alarm fatigue.
-*   **Media Mode:** Automatic seamless audio extraction via `moviepy` and `librosa` for pre-recorded clinical videos.
+## Quick Start (Local Python Runtime)
 
-### 3. Cognitive Core (The "Brain")
-*   **Tier 1 (Reflex Engine):** Local ML inference providing instantaneous sub-second probabilistic risk tracking (0-100%).
-*   **Tier 2 (Binary Verification):** Gemini API fast-pass verification (under 2 seconds) confirming or suppressing Reflex alerts to act as an aggressive false-alarm filter.
-*   **Tier 3 (Clinical Enrichment):** Full multimodal LLM reasoning (under 6 seconds) mapping historical frames, bounding boxes, and audio cues into structured, clinical-grade JSON Incident Reports.
-
-### 4. Interactive Clinical Dashboard (Web App)
-*   **Web Framework:** FastAPI backend with bidirectional WebSockets.
-*   **UI/UX:** State-of-the-art Vanilla JS frontend featuring real-time risk gauges (`FSIM`/`SZSIM`), dynamic event overlays, and full patient history review panes.
-*   **Hospital-Grade Audio (`VGAudio`):** In-browser ADSR wave synthesizer generating medical-standard Triangle/Square wave alarms and Text-to-Speech (TTS) announcements, removing reliance on static sound files.
-*   **Database Engine:** PostgreSQL via SQLAlchemy tracking `Nurses`, `Patients`, `IncidentLogs`, and `AuditLogs` for full clinical traceability.
-
----
-
-## ⚡ Quick Start
-
-### 1. Setup Environment
 ```bash
-# Activate virtual environment
+python -m venv venv
 venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-```
-
-### 2. Run the Demo Server
-This boots the integrated FastAPI server, running the active multimodal inference pipeline.
-```bash
-# Ensure PostgreSQL is running on port 5432 and GEMINI_API_KEY is in your .env
 python scripts/demo/demo_server.py
 ```
-*   Access the dashboard at `http://localhost:8000`
-*   Log in using the default Nurse or Admin credentials dynamically seeded in PostgreSQL.
 
----
+Requirements:
 
-## 📂 Project Structure
+- PostgreSQL reachable at `DATABASE_URL` (or fallback defaults in `scripts/demo/database.py`)
+- `.env` with `GEMINI_API_KEY`
+- if `INFERENCE_MODE=KAGGLE`, set `KAGGLE_ENDPOINT`
 
-| Directory | Purpose |
+Dashboard:
+
+- `http://localhost:8000`
+
+## Quick Start (Docker Runtime)
+
+```bash
+docker compose up -d db
+docker compose up -d app
+docker compose logs -f app
+```
+
+Notes:
+
+- Docker setup is CPU-first (`OPENVINO_DEVICE=intel:cpu`).
+- `PERSON_DETECTOR_PROCESS_EVERY=4` is configured in compose for stable FPS.
+- `MIC_ENABLED=false` and `AUDIO_ANALYTICS_ENABLED=true` allow clip-audio analytics without live microphone access.
+
+## Repository Layout
+
+| Path | Purpose |
 |:---|:---|
-| `visual_guardian/` | Core vision logic (MoViNet loaders, YOLO11 OpenVINO, Vision Pipeline) |
-| `auditory_watchdog/` | Audio processing (YAMNet Distress Classifier, Whisper Keyword Spotter, Accumulators) |
-| `cognitive_core/` | Progressive AI Verification (Gemini Tier 2 / Tier 3 Verifier) |
-| `scripts/demo/` | FastAPI Web Server, WebSocket managers, SQLAlchemy schemas (`database.py`) |
-| `scripts/demo/public/` | Dashboard Frontend (Vanilla JS, CSS, Hospital UI) |
-| `demo_dataset/` | Pre-processed testing videos (Falls, Asthma, Whooping Cough, Normal) |
-| `config/` | System configuration (`config.yaml`) |
+| `visual_guardian/` | Vision pipeline, person detector, temporal encoders, fall/seizure classifiers |
+| `auditory_watchdog/` | Audio capture/injection, privacy shield, distress + keyword models |
+| `cognitive_core/` | Gemini verification and incident enrichment |
+| `scripts/demo/` | FastAPI app, WebSocket orchestration, DB models |
+| `scripts/demo/public/` | Dashboard frontend static assets |
+| `config/` | Runtime configuration (`config.yaml`) |
+| `docs/` | Architecture notes, guides, analysis, and deprecated references |
 
-## 📚 Documentation
-*   **[Technical Documentation](technical_documentation.md):** Deep dive into module implementations and API flows.
-*   **[Visual Guardian V2 Plan](Visual_Guardian_V2_Final_Plan.md):** Legacy progression roadmap document.
+## Documentation
 
----
+- [Technical Documentation](technical_documentation.md)
+- [Quick Start Guide](docs/QUICK_START.md)
+- [Architecture Overview](docs/guides/ARCHITECTURE_OVERVIEW.md)
+- [Architecture Evolution](docs/Architecture_Evolution.md)
 
-**Status:** Active Development (Final Phase: UI Overhaul & Multi-modal Integration)
+## Status
+
+Actively maintained.

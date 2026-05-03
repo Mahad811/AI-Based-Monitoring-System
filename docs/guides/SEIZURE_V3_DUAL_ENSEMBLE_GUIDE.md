@@ -44,7 +44,7 @@ Final = (P_motion + P_temporal) / 2
 
 ```bash
 # Activate environment
-d:\project\FYP\venv\Scripts\Activate.ps1
+d:\project\FYP_new\venv\Scripts\Activate.ps1
 
 # Generate BOTH datasets
 python scripts/prepare_seizure_classification.py
@@ -106,24 +106,24 @@ Compress-Archive -Path seizure_temporal_map -DestinationPath seizure_temporal_ma
 
 ```bash
 # Create directory structure
-mkdir d:\project\FYP\seizure_detection\weights
-mkdir d:\project\FYP\seizure_detection\weights\temporal
+mkdir d:\project\FYP_new\seizure_detection\weights
+mkdir d:\project\FYP_new\seizure_detection\weights\temporal
 
 # Extract motion models to main weights/
 # Extract fold0.pt...fold4.pt from seizure_v3_ensemble.zip to:
-d:\project\FYP\seizure_detection\weights\fold0.pt
-d:\project\FYP\seizure_detection\weights\fold1.pt
-d:\project\FYP\seizure_detection\weights\fold2.pt
-d:\project\FYP\seizure_detection\weights\fold3.pt
-d:\project\FYP\seizure_detection\weights\fold4.pt
+d:\project\FYP_new\seizure_detection\weights\fold0.pt
+d:\project\FYP_new\seizure_detection\weights\fold1.pt
+d:\project\FYP_new\seizure_detection\weights\fold2.pt
+d:\project\FYP_new\seizure_detection\weights\fold3.pt
+d:\project\FYP_new\seizure_detection\weights\fold4.pt
 
 # Extract temporal models to temporal/
 # Extract fold0.pt...fold4.pt from seizure_temporal_ensemble.zip to:
-d:\project\FYP\seizure_detection\weights\temporal\fold0.pt
-d:\project\FYP\seizure_detection\weights\temporal\fold1.pt
-d:\project\FYP\seizure_detection\weights\temporal\fold2.pt
-d:\project\FYP\seizure_detection\weights\temporal\fold3.pt
-d:\project\FYP\seizure_detection\weights\temporal\fold4.pt
+d:\project\FYP_new\seizure_detection\weights\temporal\fold0.pt
+d:\project\FYP_new\seizure_detection\weights\temporal\fold1.pt
+d:\project\FYP_new\seizure_detection\weights\temporal\fold2.pt
+d:\project\FYP_new\seizure_detection\weights\temporal\fold3.pt
+d:\project\FYP_new\seizure_detection\weights\temporal\fold4.pt
 ```
 
 **Final structure:**

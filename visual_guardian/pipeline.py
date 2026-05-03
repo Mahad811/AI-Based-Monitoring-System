@@ -5,6 +5,7 @@ Main orchestrator that integrates all vision components for real-time monitoring
 Processes incoming video frames and generates structured event dictionaries.
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 from .person_detector import PersonDetector
@@ -37,10 +38,16 @@ class VisionPipeline:
         print("Initializing Vision Pipeline...")
         
         # Shared person detector
+        # OPENVINO_DEVICE env var overrides config so Docker (no iGPU) can
+        # force 'intel:cpu' without touching config.yaml.
+        openvino_device = os.getenv(
+            "OPENVINO_DEVICE",
+            config['person_detector'].get('device', 'intel:cpu')
+        )
         self.person_detector = PersonDetector(
             model_path=config['person_detector']['model'],
             confidence=config['person_detector']['confidence'],
-            device=config['person_detector'].get('device', 'cpu')
+            device=openvino_device
         )
         print("✓ Person detector loaded")
         
@@ -71,7 +78,11 @@ class VisionPipeline:
         if 'fall_classifier' in config:
             try:
                 model_path = Path(config['fall_classifier']['model'])
-                if model_path.exists():
+                inference_mode = os.getenv("INFERENCE_MODE", "LOCAL").upper()
+                # In KAGGLE mode the local .keras file is intentionally absent —
+                # FallClassifier will route all requests to the remote endpoint.
+                # Skip the file-existence check so the classifier is still created.
+                if model_path.exists() or inference_mode == "KAGGLE":
                     self.fall_classifier = FallClassifier(
                         model_path=config['fall_classifier']['model'],
                         device='auto'
