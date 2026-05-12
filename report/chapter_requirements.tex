@@ -1,0 +1,219 @@
+\chapter{Project Requirements}
+\label{chap:requirements}
+
+This chapter outlines the requirements for the successful completion of Vital
+Guardian, organised into three categories: the Event Response Table (Use Cases),
+Functional Requirements per module, and Non-Functional Requirements.
+
+% =============================================================
+\section{Use-Case and Event Response Table}
+\label{sec:event_response}
+
+The system is designed to detect specific environmental stimuli and trigger
+calculated responses. Table \ref{tab:event_response} details the full range of
+critical and non-critical events the system monitors, and the corresponding
+responses determined by the Cognitive Core.
+
+\begin{table}[H]
+    \centering
+    \caption{Event Response Table for Vital Guardian (Part 1 of 2)}
+    \label{tab:event_response}
+    \renewcommand{\arraystretch}{1.4}
+    \begin{tabular}{|p{3.8cm}|p{2cm}|p{5.2cm}|p{1.8cm}|}
+    \hline
+    \textbf{Event (Stimulus)} & \textbf{Source} & \textbf{System Response} & \textbf{Priority} \\ \hline
+
+    Patient experiences a sudden rapid descent from the bed, followed by a gasp. &
+    Vision and Audio &
+    Cognitive Core fuses the fall event and the Tier-3 distress audio, confirms
+    the emergency, and generates a natural language alert: ``Patient has fallen
+    and is in distress.'' &
+    CRITICAL \\ \hline
+
+    Erratic, seizure-like full-body movements detected, with wheezing or
+    laboured breathing audible. &
+    Vision and Audio &
+    MoViNet-A2 and YAMNet both fire simultaneously. Cognitive Core correlates
+    dangerous movement with respiratory distress and flags a medical emergency. &
+    CRITICAL \\ \hline
+
+    Patient screams or calls for help. Keyword ``Help'' or ``Dard'' detected in
+    the audio stream. &
+    Audio &
+    Faster-Whisper transcribes the keyword. Cognitive Core generates an
+    immediate alert containing the detected phrase and timestamp. &
+    CRITICAL \\ \hline
+
+    Patient rolls to the edge of the bed and moaning is detected. &
+    Vision and Audio &
+    MediaPipe detects the hip landmark approaching the bed boundary.
+    YAMNet detects moaning. Cognitive Core generates alert:
+    ``Patient showing fall risk near bed edge.'' &
+    HIGH \\ \hline
+
+    Patient fall detected with no accompanying audio distress signal. &
+    Vision &
+    MoViNet-A2 fires on the fall clip. Cognitive Core performs Tier-2
+    verification on the vision event alone and registers a high-priority alert
+    to ensure patient safety. &
+    HIGH \\ \hline
+
+    Patient detected attempting to remove medical equipment, with rapid
+    irregular arm movements near the torso. &
+    Vision &
+    MediaPipe detects sustained wrist proximity to chest region. Cognitive Core
+    classifies the event as a high-risk interference attempt and alerts staff. &
+    HIGH \\ \hline
+
+    \multicolumn{4}{r}{\small\textit{Continued on next page\ldots}} \\
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Event Response Table for Vital Guardian (Part 2 of 2)}
+    \label{tab:event_response_2}
+    \renewcommand{\arraystretch}{1.4}
+    \begin{tabular}{|p{3.8cm}|p{2cm}|p{5.2cm}|p{1.8cm}|}
+    \hline
+    \textbf{Event (Stimulus)} & \textbf{Source} & \textbf{System Response} & \textbf{Priority} \\ \hline
+
+    Prolonged period of complete patient stillness detected. No movement for
+    an extended duration beyond the configured threshold. &
+    Vision &
+    Visual Guardian detects the absence of expected baseline micro-movement.
+    Cognitive Core generates a medium-priority welfare check alert. &
+    MEDIUM \\ \hline
+
+    Coughing or choking sounds detected persistently across multiple consecutive
+    audio chunks. &
+    Audio &
+    YAMNet classifies repeated Tier-1 audio events. Cognitive Core escalates
+    to MEDIUM priority after sustained duration and alerts nursing staff. &
+    MEDIUM \\ \hline
+
+    Visitor conversation detected. Speech activity continues beyond the
+    configured visitor duration threshold. &
+    Audio &
+    Silero VAD activates Visitor Mode. Speech transcription and keyword
+    spotting are automatically paused. No alert is generated. Dashboard
+    displays ``Visitor Mode Active.'' &
+    LOW \\ \hline
+
+    Patient adjusts sleeping position calmly. No audio distress signal
+    is detected. &
+    Vision &
+    MediaPipe detects movement but torso angle and kinematic variance remain
+    within safe bounds. Cognitive Core logs the event as routine. No alarm
+    generated to reduce alarm fatigue. &
+    LOW \\ \hline
+
+    Loud environmental noise detected (equipment alarm, door slam) with no
+    corresponding visual patient event. &
+    Audio &
+    YAMNet classifies the sound. Cognitive Core finds no corroborating vision
+    event and suppresses the alert, logging it as a false positive candidate. &
+    LOW \\ \hline
+
+    Patient is outside the camera frame. No bounding box returned by the
+    person detector for a sustained period. &
+    Vision &
+    YOLOv11n fails to return a detection for the configured number of
+    consecutive frames. System generates an alert: ``Patient not visible.
+    Manual check required.'' &
+    HIGH \\ \hline
+
+    \end{tabular}
+\end{table}
+
+
+% =============================================================
+\section{Functional Requirements}
+\label{sec:functional_reqs}
+
+This section describes the functional requirements organised by module.
+
+\subsection{Module 1: The Visual Guardian}
+\begin{enumerate}
+    \item \textbf{FR-V-1:} The system shall detect and track the patient within
+    the camera's field of view in real-time using a YOLOv11n object detector.
+    \item \textbf{FR-V-2:} The system shall detect when a patient has fallen from
+    the bed using a MoViNet-A2 spatiotemporal classifier.
+    \item \textbf{FR-V-3:} The system shall detect dangerous or unusual movements
+    (e.g., seizures) using a dedicated temporal action classifier and kinematic
+    landmark analysis.
+    \item \textbf{FR-V-4:} The system shall provide a configurable option to
+    pixelate the patient's face in the live video feed to protect privacy.
+\end{enumerate}
+
+\subsection{Module 2: The Auditory Watchdog}
+\begin{enumerate}
+    \item \textbf{FR-A-1:} The system shall classify non-verbal distress sounds,
+    including gasps, moans, and severe coughing, using the YAMNet audio classifier.
+    \item \textbf{FR-A-2:} The system shall detect predefined keywords in English
+    (``Help'', ``Pain'') and Urdu (``Madad'', ``Dard'') using an offline
+    speech-to-text transcription model.
+    \item \textbf{FR-A-3:} The system shall implement a Privacy Shield by using
+    Voice Activity Detection to identify continuous speech (indicating a visitor
+    conversation) and automatically pause speech transcription.
+\end{enumerate}
+
+\subsection{Module 3: The Cognitive Core}
+\begin{enumerate}
+    \item \textbf{FR-C-1:} The system shall fuse structured event data from the
+    Visual and Auditory modules to perform multi-modal contextual reasoning.
+    \item \textbf{FR-C-2:} The system shall generate clear, human-readable alert
+    messages in natural language suitable for immediate comprehension by nursing
+    staff, without requiring any specialised training.
+\end{enumerate}
+
+% =============================================================
+\section{Non-Functional Requirements}
+\label{sec:nfr}
+
+\subsection{Reliability}
+\begin{enumerate}
+    \item \textbf{REL-1:} The system shall provide robust runtime stability through
+    Docker containerisation, allowing the FastAPI application and PostgreSQL
+    database to automatically restart and recover following software failures.
+    \item \textbf{REL-2:} The Visual Guardian shall implement a configurable
+    frame-skip interval (\texttt{PERSON\_DETECTOR\_PROCESS\_EVERY}) to ensure
+    sustained CPU stability during continuous 24-hour monitoring.
+    \item \textbf{REL-3:} The system shall gracefully handle temporary sensor
+    disruptions, such as microphone disconnections or remote inference endpoint
+    timeouts, without terminating the monitoring process.
+\end{enumerate}
+
+\subsection{Usability}
+\begin{enumerate}
+    \item \textbf{USE-1:} Alert messages shall be presented in unambiguous natural
+    language, requiring no specialised training for nursing staff to interpret.
+    \item \textbf{USE-2:} The dashboard shall use a distinct colour-coded scheme
+    (Red for Critical, Orange for High) to enable immediate visual differentiation
+    of alert severity.
+\end{enumerate}
+
+\subsection{Performance}
+\begin{enumerate}
+    \item \textbf{PER-1:} The end-to-end latency, from the moment a critical event
+    occurs to the alert appearing on the dashboard, shall be less than 2 seconds
+    under normal operating conditions.
+    \item \textbf{PER-2:} The Visual Guardian shall maintain a minimum processing
+    rate of 10 frames per second on the target edge hardware under the
+    \texttt{LOCAL} inference mode.
+    \item \textbf{PER-3:} The Cognitive Core LLM reasoning shall complete Tier-2
+    verification in under 500 milliseconds on average.
+\end{enumerate}
+
+\subsection{Security}
+\begin{enumerate}
+    \item \textbf{SEC-1:} All raw video frame processing (YOLOv11n person detection
+    and MoViNet action classification) shall be executed locally on the edge device,
+    without transmitting raw video feeds to any external server.
+    \item \textbf{SEC-2:} The Gemini Cognitive Core shall receive only text-based,
+    structured event metadata for Tier-2 and Tier-3 reasoning, and shall never
+    receive raw visual or audio streams.
+    \item \textbf{SEC-3:} The FastAPI-based dashboard shall restrict access to
+    historical event logs stored in the PostgreSQL database, permitting viewing
+    only to authorised medical personnel.
+\end{enumerate}

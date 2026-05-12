@@ -23,6 +23,8 @@ import sys
 import time
 import json
 import asyncio
+import threading
+import queue
 import cv2
 import yaml
 import numpy as np
@@ -63,6 +65,9 @@ from auditory_watchdog.core.keyword_spotter import KeywordSpotter
 DEVICE        = 'cpu'   # TF models run on CPU on Windows (no native GPU support for TF >= 2.11)
 FRAME_SKIP    = 1
 DISABLE_POSE  = True
+
+
+
 
 SEIZURE_THRESHOLD = 0.48
 FALL_THRESHOLD    = 0.55
@@ -1113,6 +1118,8 @@ class PipelineService:
                     sleep_time   = frame_budget - elapsed
                     if sleep_time > 0:
                         await asyncio.sleep(sleep_time)
+
+
 
                     # Encode frame for UI
                     _, buf = cv2.imencode(

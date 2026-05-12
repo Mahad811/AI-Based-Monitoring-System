@@ -8,39 +8,366 @@
 <link rel="stylesheet" href="vg-ui.css">
 <link rel="stylesheet" href="admin.css">
 <style>
-.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 18px; margin-top: 20px; }
-.patient-card {
-  background: rgba(17,24,39,0.7); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px; padding: 22px; transition: all 0.3s; cursor: pointer;
-  position: relative; overflow: hidden;
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: 'Inter', sans-serif;
+  background: #060910;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
 }
-.patient-card:hover { transform: translateY(-3px); border-color: #dca54c; box-shadow: 0 10px 25px rgba(220,165,76,0.15); }
-.pt-name  { font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
-.pt-room  { font-size: 0.78rem; color: #8b9ab7; font-family: 'JetBrains Mono', monospace; }
-.pt-risk  { display: inline-block; padding: 4px 9px; border-radius: 4px; font-size: 0.63rem; font-weight: 700; text-transform: uppercase; margin-top: 14px; border: 1px solid; }
-.risk-high     { background: rgba(239,68,68,0.15);  color: #ef4444; border-color: rgba(239,68,68,0.3); }
-.risk-protocol { background: rgba(220,165,76,0.15); color: #dca54c; border-color: rgba(220,165,76,0.3); }
-.risk-stable   { background: rgba(52,211,153,0.15); color: #34d399; border-color: rgba(52,211,153,0.3); }
-.btn-cam {
-  position: absolute; bottom: 18px; right: 18px;
-  background: #34d399; color: #000; border: none; border-radius: 50%;
-  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; cursor: pointer; transition: 0.2s; box-shadow: 0 0 14px rgba(52,211,153,0.4);
-}
-.patient-card:hover .btn-cam { transform: scale(1.12); }
 
-/* Nav nurse badge */
+/* Dot-grid texture */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Animated background blobs ── */
+.hub-bg { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+
+.blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(75px);
+}
+/* Green — top left */
+.blob.b1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(52,211,153,0.55) 0%, rgba(52,211,153,0.05) 70%);
+  top: -200px; left: -150px;
+  animation: bfloat1 16s ease-in-out infinite alternate;
+}
+/* Purple — bottom right */
+.blob.b2 {
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(139,92,246,0.5) 0%, rgba(139,92,246,0.05) 70%);
+  bottom: -250px; right: -180px;
+  animation: bfloat2 18s ease-in-out infinite alternate;
+}
+/* Gold — center top */
+.blob.b3 {
+  width: 450px; height: 450px;
+  background: radial-gradient(circle, rgba(220,165,76,0.4) 0%, rgba(220,165,76,0.04) 70%);
+  top: -80px; left: 40%;
+  animation: bfloat3 13s ease-in-out infinite alternate;
+}
+/* Blue — bottom left */
+.blob.b4 {
+  width: 380px; height: 380px;
+  background: radial-gradient(circle, rgba(56,189,248,0.35) 0%, rgba(56,189,248,0.04) 70%);
+  bottom: 5%; left: 10%;
+  animation: bfloat4 21s ease-in-out infinite alternate;
+}
+
+@keyframes bfloat1 { 0%{transform:translate(0,0) scale(1);} 100%{transform:translate(40px,30px) scale(1.08);} }
+@keyframes bfloat2 { 0%{transform:translate(0,0) scale(1);} 100%{transform:translate(-35px,-25px) scale(1.06);} }
+@keyframes bfloat3 { 0%{transform:translate(0,0) scale(1);} 100%{transform:translate(-20px,35px) scale(1.1);} }
+@keyframes bfloat4 { 0%{transform:translate(0,0) scale(1);} 100%{transform:translate(30px,-20px) scale(1.05);} }
+
+/* ── Navbar ── */
+#navbar {
+  position: relative; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(6,9,16,0.85);
+  border-bottom: 1px solid rgba(220,165,76,0.15);
+  padding: 14px 28px;
+  box-shadow: 0 1px 0 rgba(220,165,76,0.06), 0 4px 24px rgba(0,0,0,0.3);
+}
+
+/* Shimmer gold underline on navbar */
+#navbar::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(220,165,76,0.4) 30%, rgba(220,165,76,0.6) 50%, rgba(220,165,76,0.4) 70%, transparent 100%);
+  background-size: 200% 100%;
+  animation: nav-shimmer 4s linear infinite;
+}
+@keyframes nav-shimmer {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+
+.logo-area { display: flex; align-items: center; gap: 10px; }
+.pdot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 10px #34d399, 0 0 20px rgba(52,211,153,0.3);
+  animation: pglow 2.2s ease-in-out infinite alternate;
+}
+@keyframes pglow {
+  from { box-shadow: 0 0 6px #34d399; }
+  to   { box-shadow: 0 0 16px #34d399, 0 0 32px rgba(52,211,153,0.4); }
+}
+.logo-txt { line-height: 1.25; }
+.logo-brand {
+  font-size: 0.88rem; font-weight: 800; letter-spacing: 2.5px; display: block;
+  background: linear-gradient(90deg, #dca54c 0%, #ffe0a0 35%, #dca54c 55%, #a0650a 80%, #dca54c 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: brand-shimmer 4.5s linear infinite;
+}
+@keyframes brand-shimmer { to { background-position: 260% center; } }
+.logo-sub { font-size: 0.6rem; color: #4b5a72; display: block; letter-spacing: 0.8px; }
+
+.nav-right { display: flex; align-items: center; gap: 10px; }
+
+/* Nurse badge */
 .nav-nurse-badge {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; border-radius: 6px;
+  padding: 6px 14px; border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.08);
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
-.nav-nurse-badge:hover { background: rgba(255,255,255,0.05); }
+.nav-nurse-badge:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.14);
+}
 .nav-av {
   width: 28px; height: 28px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 0.72rem; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+
+/* Nav buttons */
+.btn-ui {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e2e8f0; padding: 7px 14px;
+  border-radius: 7px; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; text-decoration: none; font-family: inherit;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.btn-ui:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.18);
+  transform: translateY(-1px);
+}
+
+/* ── Main content ── */
+#hub-content {
+  position: relative; z-index: 1;
+  max-width: 1260px; margin: 0 auto;
+  padding: 40px 28px 60px;
+}
+
+/* ── Header ── */
+.hub-header {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; margin-bottom: 32px;
+  animation: hub-enter 0.55s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes hub-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hub-title-wrap h2 {
+  font-weight: 800; font-size: 2rem; margin: 0 0 6px;
+  background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 60%, #8b9ab7 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hub-title-wrap p { color: #8b9ab7; margin: 0; font-size: 0.9rem; }
+
+/* Gold accent line under heading */
+.hub-accent-line {
+  height: 2px; width: 56px;
+  background: linear-gradient(90deg, #dca54c, transparent);
+  border-radius: 2px; margin-top: 12px;
+  transform-origin: left;
+  animation: accent-grow 0.7s ease 0.3s both;
+}
+@keyframes accent-grow {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* Live stats chips */
+#hub-live-stats {
+  display: flex; gap: 16px; align-items: center;
+}
+.hub-stat-chip {
+  background: rgba(10,14,24,0.7);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 10px 18px;
+  text-align: center;
+}
+.hub-stat-num {
+  display: block;
+  font-weight: 800; font-size: 1.4rem; line-height: 1;
+  font-family: 'JetBrains Mono', monospace;
+}
+.hub-stat-lbl {
+  display: block;
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: #4b5a72; margin-top: 4px;
+}
+
+/* ── Patient grid ── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* ── Patient card ── */
+.patient-card {
+  background: rgba(10,14,24,0.75);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px; padding: 22px 22px 18px;
+  cursor: pointer; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: card-enter 0.45s cubic-bezier(0.22,1,0.36,1) both;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* Staggered entrance */
+.patient-card:nth-child(1) { animation-delay: 0.05s; }
+.patient-card:nth-child(2) { animation-delay: 0.12s; }
+.patient-card:nth-child(3) { animation-delay: 0.19s; }
+.patient-card:nth-child(4) { animation-delay: 0.26s; }
+.patient-card:nth-child(5) { animation-delay: 0.33s; }
+.patient-card:nth-child(6) { animation-delay: 0.40s; }
+.patient-card:nth-child(7) { animation-delay: 0.47s; }
+.patient-card:nth-child(8) { animation-delay: 0.54s; }
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Hover lift + gold glow */
+.patient-card:hover {
+  transform: translateY(-5px) scale(1.01);
+  border-color: rgba(220,165,76,0.4);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(220,165,76,0.12);
+}
+
+/* Top shimmer line (hidden until hover) */
+.patient-card::before {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 60%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(220,165,76,0.7), transparent);
+  transition: left 0.4s ease;
+  pointer-events: none;
+}
+.patient-card:hover::before { left: 100%; }
+
+/* Inner corner glow on hover */
+.patient-card::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: 16px;
+  background: radial-gradient(ellipse at 0% 0%, rgba(220,165,76,0.04) 0%, transparent 60%);
+  opacity: 0; transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.patient-card:hover::after { opacity: 1; }
+
+/* Monitoring status dot */
+.pt-status-dot {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: #34d399;
+  margin-bottom: 14px;
+}
+.pt-status-dot::before {
+  content: '';
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 6px #34d399;
+  animation: dot-blink 1.8s ease-in-out infinite;
+}
+@keyframes dot-blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+.pt-name {
+  font-size: 1.2rem; font-weight: 800; color: #fff;
+  margin-bottom: 5px; letter-spacing: -0.2px;
+}
+.pt-room {
+  font-size: 0.76rem; color: #8b9ab7;
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 16px;
+}
+
+.pt-risk {
+  display: inline-block; padding: 5px 12px; border-radius: 6px;
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.6px; border: 1px solid;
+  /* Prevent long labels from stretching card width */
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 14px;
+}
+.risk-high     { background: rgba(239,68,68,0.1);  color: #fc6b6b; border-color: rgba(239,68,68,0.25); }
+.risk-protocol { background: rgba(220,165,76,0.1); color: #dca54c; border-color: rgba(220,165,76,0.25); }
+.risk-stable   { background: rgba(52,211,153,0.1); color: #34d399; border-color: rgba(52,211,153,0.25); }
+
+/* Action buttons container */
+.btn-cam, .btn-history {
+  background: rgba(52,211,153,0.12);
+  color: #34d399;
+  border: 1px solid rgba(52,211,153,0.25);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-cam {
+  border-radius: 50%; width: 42px; height: 42px;
+  font-size: 1.1rem;
+}
+.btn-history {
+  border-radius: 8px; height: 42px; padding: 0 14px;
+  font-size: 0.85rem; font-weight: 700;
+  background: rgba(220,165,76,0.12);
+  color: #dca54c;
+  border-color: rgba(220,165,76,0.25);
+}
+
+.patient-card:hover .btn-cam {
+  transform: scale(1.1);
+  background: rgba(52,211,153,0.22);
+  box-shadow: 0 0 18px rgba(52,211,153,0.35);
+}
+.patient-card:hover .btn-history {
+  transform: scale(1.05);
+  background: rgba(220,165,76,0.22);
+  box-shadow: 0 0 18px rgba(220,165,76,0.35);
+}
+
+/* Card action row — always sits at the bottom of the flex card */
+.pt-card-body {
+  flex: 1; display: block;
+  text-decoration: none; color: inherit;
+  cursor: pointer;
+}
+.pt-actions {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 10px; margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ── Skeleton loading ── */
+.vg-skeleton {
+  border-radius: 16px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.09) 50%,
+    rgba(255,255,255,0.04) 75%);
+  background-size: 1200px 100%;
+  animation: sk-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes sk-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
 }
 </style>
 <script>
@@ -48,6 +375,16 @@
 </script>
 </head>
 <body>
+
+<!-- Animated background -->
+<div class="hub-bg">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="blob b4"></div>
+</div>
+
+<!-- Navbar -->
 <div id="navbar">
   <div class="logo-area">
     <div class="pdot"></div>
@@ -56,40 +393,52 @@
       <span class="logo-sub">Central Monitoring Hub</span>
     </div>
   </div>
-  <div class="nav-right" style="display:flex;gap:10px;align-items:center;">
-    <!-- Nurse badge with avatar -->
+  <div class="nav-right">
     <div class="nav-nurse-badge" id="nav-nurse-badge" title="Your profile">
       <div class="nav-av" id="hub-nav-av"></div>
       <span id="hub-nav-name" style="font-size:0.78rem;font-weight:600;color:#e2e8f0;"></span>
     </div>
     <a href="/static/history.html" class="btn-ui">📋 Incident Logs</a>
-    <a href="/static/admin.html" id="admin-hub-btn" class="btn-ui" style="display:none;color:#dca54c;border-color:rgba(220,165,76,0.4);">⚡ Command Center</a>
-    <button onclick="logout()" class="btn-ui" style="color:#ef4444;border-color:rgba(239,68,68,0.3);">Logout</button>
+    <a href="/static/admin.html" id="admin-hub-btn" class="btn-ui" style="display:none;color:#dca54c;border-color:rgba(220,165,76,0.35);">⚡ Command Center</a>
+    <button onclick="logout()" class="btn-ui" style="color:#ef4444;border-color:rgba(239,68,68,0.25);">Logout</button>
   </div>
 </div>
 
-<div style="max-width:1200px;margin:36px auto;padding:0 24px;">
-  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;">
-    <div>
-      <h2 style="font-weight:800;font-size:1.7rem;margin:0 0 4px;">Active Ward</h2>
-      <p style="color:#8b9ab7;margin:0;font-size:0.88rem;">Select a patient card to bring their CCTV camera feed online.</p>
+<!-- Main content -->
+<div id="hub-content">
+
+  <div class="hub-header">
+    <div class="hub-title-wrap">
+      <h2>Active Ward</h2>
+      <p>Select a patient card to bring their CCTV camera feed online.</p>
+      <div class="hub-accent-line"></div>
     </div>
-    <div id="hub-skeleton-stats" style="display:flex;gap:16px;">
-      <div class="vg-skeleton" style="width:80px;height:40px;border-radius:8px;"></div>
-      <div class="vg-skeleton" style="width:80px;height:40px;border-radius:8px;"></div>
+
+    <div id="hub-skeleton-stats" style="display:flex;gap:12px;">
+      <div class="vg-skeleton" style="width:100px;height:56px;border-radius:10px;"></div>
+      <div class="vg-skeleton" style="width:100px;height:56px;border-radius:10px;"></div>
     </div>
-    <div id="hub-live-stats" style="display:none;display:flex;gap:16px;align-items:center;font-size:0.78rem;color:#8b9ab7;">
-      <div><span id="hub-patient-count" style="font-weight:800;font-size:1.1rem;color:#38bdf8;"></span> Patients</div>
-      <div><span id="hub-alert-count"   style="font-weight:800;font-size:1.1rem;color:#ef4444;"></span> Alerts today</div>
+    <div id="hub-live-stats" style="display:none;">
+      <div class="hub-stat-chip">
+        <span id="hub-patient-count" class="hub-stat-num" style="color:#38bdf8;">—</span>
+        <span class="hub-stat-lbl">Patients</span>
+      </div>
+      <div class="hub-stat-chip">
+        <span id="hub-alert-count" class="hub-stat-num" style="color:#ef4444;">—</span>
+        <span class="hub-stat-lbl">Alerts Today</span>
+      </div>
     </div>
   </div>
 
   <div class="hub-grid" id="patients-grid">
-    <div class="vg-skeleton" style="height:160px;border-radius:12px;"></div>
-    <div class="vg-skeleton" style="height:160px;border-radius:12px;"></div>
-    <div class="vg-skeleton" style="height:160px;border-radius:12px;"></div>
+    <div class="vg-skeleton" style="height:180px;"></div>
+    <div class="vg-skeleton" style="height:180px;"></div>
+    <div class="vg-skeleton" style="height:180px;"></div>
   </div>
+
 </div>
+
+<div id="vg-toast-container"></div>
 
 <script src="vg-ui.js"></script>
 <script>
@@ -99,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const staffId = localStorage.getItem('vg_staff_id')   || '';
   const av      = VG.avatar(name);
 
-  const navAv   = document.getElementById('hub-nav-av');
+  const navAv = document.getElementById('hub-nav-av');
   if (navAv) { navAv.textContent = av.initials; navAv.style.background = av.bgColor; }
   const navName = document.getElementById('hub-nav-name');
   if (navName) navName.textContent = name;
@@ -115,14 +464,25 @@ function logout() {
   window.location.href = '/static/login.html';
 }
 
+function animateNum(el, target) {
+  if (!el) return;
+  const dur = 800, start = performance.now(), from = 0;
+  (function step(now) {
+    const p = Math.min((now - start) / dur, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * ease);
+    if (p < 1) requestAnimationFrame(step);
+  })(start);
+}
+
 async function loadHubStats() {
   try {
     const data = await VG.fetchJSON('/api/history');
     const today = new Date().toISOString().slice(0, 10);
     const todayCount = data.filter(l => l.timestamp && l.timestamp.startsWith(today)).length;
-    document.getElementById('hub-alert-count').textContent = todayCount;
     document.getElementById('hub-skeleton-stats').style.display = 'none';
     document.getElementById('hub-live-stats').style.display = 'flex';
+    animateNum(document.getElementById('hub-alert-count'), todayCount);
   } catch (_) {}
 }
 
@@ -131,24 +491,35 @@ async function loadPatients() {
     const data = await VG.fetchJSON('/api/patients');
     const grid = document.getElementById('patients-grid');
     grid.innerHTML = '';
-    document.getElementById('hub-patient-count').textContent = data.length;
+    animateNum(document.getElementById('hub-patient-count'), data.length);
 
     data.forEach(p => {
       let rClass = 'risk-stable';
-      if (p.risk_profile.includes('Fall'))     rClass = 'risk-high';
-      if (p.risk_profile.includes('Protocol')) rClass = 'risk-protocol';
+      if ((p.risk_profile || '').includes('Fall'))        rClass = 'risk-high';
+      if ((p.risk_profile || '').includes('Protocol'))    rClass = 'risk-protocol';
+      if ((p.risk_profile || '').includes('Respiratory')) rClass = 'risk-protocol';
+      if ((p.risk_profile || '').includes('Pediatric'))   rClass = 'risk-protocol';
 
       const card = document.createElement('div');
       card.className = 'patient-card';
-      card.onclick   = () => window.location.href = `/static/index.html?patient=${p.id}`;
+
+      // Card body is a plain <a> — no JS click needed, no stopPropagation needed
+      // Buttons are siblings in pt-actions, NOT inside the anchor — zero conflict
       card.innerHTML = `
-        <div class="pt-name">${p.name}</div>
-        <div class="pt-room">Room ${p.room} · Age ${p.age}</div>
-        <div class="pt-risk ${rClass}">${p.risk_profile}</div>
-        <div class="btn-cam">📹</div>`;
+        <a class="pt-card-body" href="/static/index.html?patient=${p.id}">
+          <div class="pt-status-dot">Monitoring</div>
+          <div class="pt-name">${p.name}</div>
+          <div class="pt-room">Room ${p.room} &middot; Age ${p.age}</div>
+          <div class="pt-risk ${rClass}" title="${p.risk_profile || 'Stable'}">${p.risk_profile || 'Stable'}</div>
+        </a>
+        <div class="pt-actions">
+          <button class="btn-history" onclick="window.location.href='/static/patient_history.html?patient=${p.id}'">&#x1F4CB; History</button>
+          <button class="btn-cam"     onclick="window.location.href='/static/index.html?patient=${p.id}'">&#x1F4F9;</button>
+        </div>`;
+
       grid.appendChild(card);
     });
-  } catch (_) {}
+  } catch(e) { console.error('loadPatients error:', e); }
 }
 </script>
 </body>

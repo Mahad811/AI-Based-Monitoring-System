@@ -121,17 +121,17 @@ def init_db():
         patients = [
             Patient(name="Richard Hendricks", room="ICU 1", age=79,
                     risk_profile="High Fall Risk",     clip_type="fall_1"),
-            Patient(name="Martha Stewart",    room="ICU 2", age=82,
+            Patient(name="Rajesh Kumar",      room="ICU 2", age=82,
                     risk_profile="High Fall Risk",     clip_type="fall_2"),
-            Patient(name="John Watson",       room="ICU 3", age=48,
+            Patient(name="Amit Patel",        room="ICU 3", age=48,
                     risk_profile="Stable",             clip_type="normal_1"),
-            Patient(name="Sarah Palmer",      room="ICU 4", age=35,
+            Patient(name="Mei Lin",           room="ICU 4", age=35,
                     risk_profile="Epilepsy Protocol",  clip_type="seizure_1"),
-            Patient(name="David Miller",      room="ICU 5", age=42,
+            Patient(name="Sakura Tanaka",     room="ICU 5", age=42,
                     risk_profile="Epilepsy Protocol",  clip_type="seizure_2"),
-            Patient(name="Aisha Malik",       room="PED-WC01", age=8, 
+            Patient(name="James Carter",      room="PED-WC01", age=8, 
                     risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"),
-            Patient(name="Zainab Tariq",      room="ISO-AS02", age=25, 
+            Patient(name="Eleanor Davies",    room="ISO-AS02", age=25, 
                     risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video")
         ]
         db.bulk_save_objects(patients)
@@ -140,15 +140,17 @@ def init_db():
         # Check if custom patient exists dynamically to fix missing cards
         custom_wc = db.query(Patient).filter_by(clip_type="whooping_cough_video").first()
         if not custom_wc:
-            db.add(Patient(name="Aisha Malik", room="PED-WC01", age=8, risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"))
+            db.add(Patient(name="James Carter", room="PED-WC01", age=8, risk_profile="Pediatric - Whooping Cough", clip_type="whooping_cough_video"))
             
         custom_as = db.query(Patient).filter_by(clip_type="asthma_attack_video").first()
         if not custom_as:
-            db.add(Patient(name="Zainab Tariq", room="ISO-AS02", age=25, risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video"))
+            db.add(Patient(name="Eleanor Davies", room="ISO-AS02", age=25, risk_profile="Respiratory - Asthma Attack", clip_type="asthma_attack_video"))
 
+        # Remove Live Hardware Feed if it exists
         live = db.query(Patient).filter_by(clip_type="live_feed").first()
-        if not live:
-            db.add(Patient(name="LIVE HARDWARE FEED", room="ICU-LIVE", age=0, risk_profile="Edge Mode: WebCam + Mic", clip_type="live_feed"))
+        if live:
+            db.delete(live)
+            
         db.commit()
 
     # Always enforce clean room labels (fixes existing seeded records)
@@ -156,6 +158,18 @@ def init_db():
                     "seizure_1": "ICU 4", "seizure_2": "ICU 5"}
     for clip, room in _clean_rooms.items():
         db.query(Patient).filter(Patient.clip_type == clip).update({"room": room})
+
+    # Enforce new names on existing DB records
+    _clean_names = {
+        "fall_2": "Rajesh Kumar",
+        "normal_1": "Amit Patel",
+        "seizure_1": "Mei Lin",
+        "seizure_2": "Sakura Tanaka",
+        "whooping_cough_video": "James Carter",
+        "asthma_attack_video": "Eleanor Davies"
+    }
+    for clip, new_name in _clean_names.items():
+        db.query(Patient).filter(Patient.clip_type == clip).update({"name": new_name})
 
     db.commit()
     db.close()

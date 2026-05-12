@@ -88,8 +88,10 @@
   position: fixed; inset: 0; z-index: 7000;
   background: rgba(0,0,0,0.5); backdrop-filter: blur(3px);
   opacity: 0; transition: opacity 0.25s;
+  pointer-events: none;
 }
-.vg-drawer-backdrop.open { opacity: 1; }
+.vg-drawer-backdrop.open { opacity: 1; pointer-events: all; }
+
 .vg-drawer {
   position: fixed; top: 0; right: 0; bottom: 0;
   width: 480px; max-width: 95vw;
@@ -350,3 +352,184 @@
   font-size: 0.78rem; font-family: inherit;
 }
 .vg-filter-input:focus { outline: none; border-color: var(--vg-gold); }
+
+/* ══════════════════════════════════════
+   PREMIUM ANIMATION SYSTEM (CPU-safe)
+   Uses only transform + opacity — compositor-only, no layout repaint
+══════════════════════════════════════ */
+
+/* ── Page load fade-up ── */
+@keyframes vg-page-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.vg-page-in {
+  animation: vg-page-in 0.55s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+/* ── Entrance: fade up ── */
+@keyframes vg-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.vg-enter {
+  opacity: 0;
+  animation: vg-enter 0.45s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+/* ── Entrance: fade in from right ── */
+@keyframes vg-enter-r {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.vg-enter-r {
+  opacity: 0;
+  animation: vg-enter-r 0.4s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+/* ── Stagger delays (apply to children) ── */
+.vg-stagger > *:nth-child(1)  { animation-delay: 0.05s; }
+.vg-stagger > *:nth-child(2)  { animation-delay: 0.10s; }
+.vg-stagger > *:nth-child(3)  { animation-delay: 0.15s; }
+.vg-stagger > *:nth-child(4)  { animation-delay: 0.20s; }
+.vg-stagger > *:nth-child(5)  { animation-delay: 0.25s; }
+.vg-stagger > *:nth-child(6)  { animation-delay: 0.30s; }
+.vg-stagger > *:nth-child(7)  { animation-delay: 0.35s; }
+.vg-stagger > *:nth-child(8)  { animation-delay: 0.40s; }
+
+/* ── Floating animation (subtle, CPU-safe) ── */
+@keyframes vg-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+.vg-float { animation: vg-float 4s ease-in-out infinite; }
+
+/* ── Slow spin ── */
+@keyframes vg-spin-slow {
+  to { transform: rotate(360deg); }
+}
+.vg-spin-slow { animation: vg-spin-slow 8s linear infinite; }
+
+/* ── Pulse ring (opacity only — no repaint) ── */
+@keyframes vg-pulse-ring {
+  0%   { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.55); }
+}
+.vg-pulse-ring {
+  border-radius: 50%;
+  animation: vg-pulse-ring 1.8s ease-out infinite;
+}
+
+/* ── Shimmer bar (background-position only) ── */
+@keyframes vg-shimmer-sweep {
+  from { background-position: -400px 0; }
+  to   { background-position:  400px 0; }
+}
+.vg-shimmer-bar {
+  background: linear-gradient(90deg,
+    rgba(220,165,76,0) 0%,
+    rgba(220,165,76,0.35) 50%,
+    rgba(220,165,76,0) 100%);
+  background-size: 400px 100%;
+  animation: vg-shimmer-sweep 2.2s ease-in-out infinite;
+}
+
+/* ── Glow text utilities ── */
+.vg-glow-gold  { text-shadow: 0 0 12px rgba(220,165,76,0.6),  0 0 24px rgba(220,165,76,0.3); }
+.vg-glow-green { text-shadow: 0 0 12px rgba(52,211,153,0.6),  0 0 24px rgba(52,211,153,0.3); }
+.vg-glow-red   { text-shadow: 0 0 12px rgba(239,68,68,0.6),   0 0 24px rgba(239,68,68,0.3); }
+.vg-glow-purple{ text-shadow: 0 0 12px rgba(168,85,247,0.6),  0 0 24px rgba(168,85,247,0.3); }
+
+/* ── Enhanced stat tiles with animated left accent ── */
+.vg-stat-tile {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.vg-stat-tile::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--vg-gold);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  border-radius: 2px 0 0 2px;
+}
+.vg-stat-tile:hover { transform: translateY(-2px); }
+.vg-stat-tile:hover::before { opacity: 1; }
+
+/* ── Enhanced buttons — lift + glow on hover ── */
+.vg-btn {
+  transition: transform 0.18s ease, background 0.18s ease,
+              border-color 0.18s ease, color 0.18s ease;
+}
+.vg-btn:hover { transform: translateY(-1px); }
+.vg-btn:active { transform: translateY(0); }
+.vg-btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(52,211,153,0.25);
+}
+
+/* ── Profile card — smooth lift ── */
+.vg-profile-card {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+/* ── Activity feed row slide-in ── */
+.vg-activity-item {
+  animation: vg-enter-r 0.35s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+/* ── Gold accent line ── */
+.vg-accent-line {
+  height: 2px;
+  background: linear-gradient(90deg, var(--vg-gold), transparent);
+  border-radius: 2px;
+  transform-origin: left;
+  animation: vg-accent-grow 0.6s ease forwards;
+}
+@keyframes vg-accent-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ── Drawer enhanced ── */
+.vg-drawer {
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── Toast enhanced ── */
+.vg-toast {
+  animation: vg-toast-in 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+/* ── Skeleton shimmer enhanced ── */
+@keyframes vg-shimmer-sk {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.vg-skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.09) 50%,
+    rgba(255,255,255,0.04) 75%);
+  background-size: 1200px 100%;
+  animation: vg-shimmer-sk 1.6s ease-in-out infinite;
+}
+
+/* ── Number count-up target (JS sets this) ── */
+.vg-count-anim { transition: none; }
+
+/* ── Soft ambient glow orbs (CPU-safe, transform+opacity only) ── */
+.vg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.12;
+  pointer-events: none;
+  animation: vg-float 8s ease-in-out infinite;
+}
+.vg-orb-gold   { background: #dca54c; }
+.vg-orb-green  { background: #34d399; }
+.vg-orb-purple { background: #a855f7; }
+

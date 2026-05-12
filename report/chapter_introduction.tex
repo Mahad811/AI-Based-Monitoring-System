@@ -1,0 +1,181 @@
+\chapter{Introduction}
+\label{chap:intro}
+
+The Intensive Care Unit (ICU) represents a demanding clinical environment where
+continuous patient observation is paramount, especially for individuals in a
+comatose or mobility-impaired state. Current monitoring protocols are strained
+by the inherent limits of human vigilance and the shortcomings of existing
+automated alarms, which frequently produce high rates of false positives and
+contribute to the well-documented phenomenon of ``alarm fatigue.''
+
+This project introduces \textbf{Vital Guardian}, an artificial intelligence-driven
+patient monitoring system engineered to bridge this deficiency. Vital Guardian
+operates as a vigilant, always-on layer of observation designed to empower
+clinical staff by providing timely, contextually aware alerts for critical patient
+events. The system intelligently fuses data from two sensory streams --- computer
+vision and audio analysis --- and preserves patient privacy by processing all raw
+media locally on an edge device.
+
+% =============================================================
+\section{Existing Solutions}
+\label{sec:existing_solutions}
+
+Patient monitoring in ICUs currently relies on a combination of direct human
+supervision and various automated technologies. While these approaches provide a
+baseline of safety, each suffers from distinct limitations in scalability,
+accuracy, and privacy.
+
+Human attendants provide the most comprehensive care but are subject to fatigue
+and staffing shortages. Automated solutions such as pressure mats and wearable
+sensors generate high rates of false alarms due to routine patient restlessness
+rather than genuine emergencies. Centralised CCTV systems raise significant
+privacy concerns by transmitting video data to central servers.
+
+Table \ref{tab:existing_solutions} compares the prevailing monitoring approaches
+with the proposed Vital Guardian system.
+
+\begin{table}[H]
+    \centering
+    \caption{Comparison of Existing Patient Monitoring Solutions}
+    \label{tab:existing_solutions}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{|p{3.5cm}|p{5cm}|p{5cm}|}
+    \hline
+    \textbf{Solution} & \textbf{Overview} & \textbf{Key Limitations} \\ \hline
+    Human Attendants &
+    Continuous manual observation by nursing staff or dedicated sitters. &
+    Not scalable; subject to fatigue; response times limited by
+    high patient-to-nurse ratios. \\ \hline
+    Bed Pressure Alarms &
+    Sensors embedded in the bed that trigger when weight is removed. &
+    Extremely high false positive rates; cannot distinguish routine
+    repositioning from a genuine fall. \\ \hline
+    Centralised CCTV and Cloud AI &
+    Video feeds transmitted to a central station or cloud server for analysis. &
+    High privacy risk from data transmission; latency issues; requires
+    expensive infrastructure upgrades. \\ \hline
+    Vital Guardian (Proposed) &
+    Multi-modal AI monitoring with all inference performed locally on an edge device. &
+    Requires capable edge hardware; Cognitive Core reasoning depends on
+    external LLM connectivity. \\ \hline
+    \end{tabular}
+\end{table}
+
+% =============================================================
+\section{Problem Statement}
+\label{sec:problem_statement}
+
+Comatose patients in ICUs represent one of the most vulnerable populations in
+healthcare, requiring continuous supervision due to their inability to communicate
+distress or respond independently to emergencies. The healthcare industry lacks a
+comprehensive solution that provides intelligent, automated monitoring while
+simultaneously preserving patient privacy and reducing caregiver burden.
+
+This gap in care represents a critical safety issue. Delayed detection of
+emergencies such as falls, seizures, or respiratory distress can result in severe
+complications or death. Existing automated systems exacerbate the problem through
+alarm fatigue, where frequent false alarms desensitise staff to genuine
+emergencies. Cloud-based monitoring solutions introduce further unacceptable
+privacy risks. Vital Guardian is developed to directly address these issues by
+providing a context-aware, privacy-preserving monitoring solution that processes
+all raw data on-premise.
+
+% =============================================================
+\section{Scope}
+\label{sec:scope}
+
+The scope of the Vital Guardian project is to design, develop, and validate an
+edge-computing system for intelligent ICU patient monitoring.
+
+\begin{itemize}
+    \item \textbf{Inclusions:} The project covers the development of a multi-modal
+    monitoring solution integrating computer vision and audio processing. It includes
+    real-time patient tracking, fall detection, dangerous movement analysis
+    (seizures), audio distress classification (gasps, moans), and multilingual
+    keyword spotting. It includes a multi-tier LLM-driven Cognitive Core for
+    contextual reasoning and natural language alert generation.
+
+    \item \textbf{Exclusions:} The system does not retain raw video or audio data
+    for long-term storage. It does not directly interface with or control
+    life-support equipment such as ventilators. It is an assistive tool and does
+    not replace the legal requirement for qualified human medical oversight.
+\end{itemize}
+
+% =============================================================
+\section{Modules}
+\label{sec:modules}
+
+The Vital Guardian system is decomposed into three primary modules.
+
+\subsection{Module 1: The Visual Guardian}
+
+This module serves as the eyes of the system, responsible for all vision-based
+monitoring tasks using a standard IP or USB camera.
+
+\begin{enumerate}
+    \item \textbf{Patient Tracking:} Continuous detection and localisation of the
+    patient within the camera frame using YOLOv11n, accelerated via Intel OpenVINO.
+    \item \textbf{Fall Detection:} Real-time detection of rapid descents or
+    unintended bed exits using a MoViNet-A2 spatiotemporal classifier on a
+    16-frame rolling buffer.
+    \item \textbf{Seizure Detection:} Detection of prolonged rhythmic movements
+    using a dedicated MoViNet-A2 model operating on a 64-frame temporal window
+    with stride-2 subsampling.
+    \item \textbf{Kinematic Analysis:} Biomechanical verification of detected
+    events using MediaPipe Pose landmark tracking.
+\end{enumerate}
+
+\subsection{Module 2: The Auditory Watchdog}
+
+This module functions as the ears of the system, providing audio intelligence
+to detect non-visual signs of patient distress.
+
+\begin{enumerate}
+    \item \textbf{Distress Classification:} Identifies non-verbal distress sounds
+    including gasps, moans, and wheezing using YAMNet.
+    \item \textbf{Keyword Spotting:} Detects predefined help-related keywords in
+    both English and Urdu using Faster-Whisper transcription.
+    \item \textbf{Privacy Shield:} Utilises Silero Voice Activity Detection (VAD)
+    to identify continuous conversations and automatically pause speech
+    transcription, protecting visitor and patient privacy.
+\end{enumerate}
+
+\subsection{Module 3: The Cognitive Core}
+
+This module serves as the brain of the system, using Gemini language models to
+fuse data from the visual and audio modules into structured clinical alerts.
+
+\begin{enumerate}
+    \item \textbf{Tier-2 Verification:} Receives structured JSON payloads from
+    both sensory modules and performs binary confirmation or suppression of the
+    detected event, reducing false positives.
+    \item \textbf{Tier-3 Enrichment:} Generates human-readable, clinically
+    actionable alert messages with a severity rating for display on the nursing
+    dashboard.
+\end{enumerate}
+
+% =============================================================
+\section{Work Division}
+\label{sec:work_division}
+
+The project follows a structured, role-based implementation approach.
+
+\begin{table}[H]
+    \centering
+    \caption{Project Work Division and Member Responsibilities}
+    \label{tab:work_division}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{|p{4cm}|p{4cm}|p{5.5cm}|}
+    \hline
+    \textbf{Member Name} & \textbf{Role} & \textbf{Primary Responsibility} \\ \hline
+    Eman Hassan &
+    Project Lead and System Architect &
+    System design, Cognitive Core integration, and overall project planning. \\ \hline
+    Muhammad Mahad Khan &
+    Vision Module Lead &
+    Development of YOLOv11n, MoViNet-A2, and MediaPipe vision pipeline. \\ \hline
+    Muhammad Hasan Waqar &
+    Audio Module Lead &
+    Development of YAMNet distress classification and Keyword Spotting. \\ \hline
+    \end{tabular}
+\end{table}

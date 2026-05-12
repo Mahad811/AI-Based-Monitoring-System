@@ -787,3 +787,197 @@ body.sev-seizure {
   stroke-width: 1.3;
   stroke-linecap: round;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   PREMIUM ENHANCEMENTS — CPU-SAFE (transform + opacity only)
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Body entrance ── */
+body {
+  animation: body-fadein 0.4s ease both;
+}
+@keyframes body-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Navbar enhanced ── */
+#navbar {
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 1px 0 rgba(220,165,76,0.08), 0 4px 20px rgba(0,0,0,0.2);
+}
+
+/* ── Sidebar depth separator ── */
+#sidebar {
+  box-shadow: -4px 0 20px rgba(0,0,0,0.15) inset;
+  border-left: 1px solid rgba(255,255,255,0.07);
+}
+
+/* ── Gauge: neon glow pulse when hot (opacity/filter animation — no layout) ── */
+@keyframes gauge-glow-fall {
+  0%,100% { filter: drop-shadow(0 0 4px rgba(245,158,11,0.5)); }
+  50%     { filter: drop-shadow(0 0 10px rgba(249,115,22,0.8)); }
+}
+@keyframes gauge-glow-sz {
+  0%,100% { filter: drop-shadow(0 0 4px rgba(168,85,247,0.5)); }
+  50%     { filter: drop-shadow(0 0 10px rgba(239,68,68,0.8)); }
+}
+.g-arc.fa.hot { animation: gauge-glow-fall 1.2s ease-in-out infinite; }
+.g-arc.sa.hot { animation: gauge-glow-sz  0.9s ease-in-out infinite; }
+
+/* Gauge card glow when active */
+.g-card {
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+#vid-box.af ~ * .g-card:first-child {
+  border-color: rgba(245,158,11,0.25);
+  box-shadow: 0 0 16px rgba(245,158,11,0.06);
+}
+#vid-box.as ~ * .g-card:last-child {
+  border-color: rgba(168,85,247,0.25);
+  box-shadow: 0 0 16px rgba(168,85,247,0.06);
+}
+
+/* ── Vitals: SpO2 soft pulse icon ── */
+@keyframes spo2-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.75; transform: scale(0.92); }
+}
+#vi-hr {
+  animation: hb-beat 1.2s ease-in-out infinite;
+}
+@keyframes hb-beat {
+  0%,60%,100% { transform: scale(1); }
+  20%         { transform: scale(1.22); }
+  40%         { transform: scale(1.05); }
+}
+
+/* ── Patient card: animated avatar ring ── */
+.p-avatar {
+  position: relative;
+}
+.p-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(220,165,76,0.3);
+  animation: av-ring-spin 6s linear infinite;
+  border-top-color: rgba(220,165,76,0.7);
+}
+@keyframes av-ring-spin {
+  to { transform: rotate(360deg); }
+}
+.p-avatar.av-fall::after    { border-color: rgba(245,158,11,0.25); border-top-color: rgba(245,158,11,0.8); }
+.p-avatar.av-seizure::after { border-color: rgba(239,68,68,0.25);  border-top-color: rgba(239,68,68,0.8); }
+
+/* ── Gemini card: animated header gradient ── */
+.gem-hdr {
+  position: relative;
+  overflow: hidden;
+}
+.gem-hdr::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: -100%; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent);
+  animation: gem-line-sweep 3s ease-in-out infinite;
+}
+@keyframes gem-line-sweep {
+  0%   { left: -100%; }
+  50%  { left: 100%; }
+  100% { left: 100%; }
+}
+
+/* ── Thinking dots improved ── */
+.td {
+  animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* ── Alert log cards: entrance animation ── */
+.ac {
+  animation: ac-slide-in 0.38s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes ac-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Alert banner: gold top line on active ── */
+#alert-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: rgba(255,255,255,0.4);
+  animation: ab-top-pulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes ab-top-pulse {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+
+/* ── Patient card entrance ── */
+#pat-card {
+  animation: vg-enter 0.4s cubic-bezier(0.22,1,0.36,1) 0.1s both;
+}
+#gauges {
+  animation: vg-enter 0.4s cubic-bezier(0.22,1,0.36,1) 0.18s both;
+}
+#gem-card {
+  animation: vg-enter 0.4s cubic-bezier(0.22,1,0.36,1) 0.26s both;
+}
+#alert-log {
+  animation: vg-enter 0.4s cubic-bezier(0.22,1,0.36,1) 0.34s both;
+}
+
+/* Reuse entrance from vg-ui.css */
+@keyframes vg-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Segment bar entrance ── */
+#seg-bar {
+  animation: vg-enter 0.4s cubic-bezier(0.22,1,0.36,1) 0.05s both;
+}
+
+/* ── Live pill enhanced ── */
+.live-pill {
+  position: relative;
+  overflow: hidden;
+}
+.live-pill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(239,68,68,0.1), transparent);
+  background-size: 200% 100%;
+  animation: live-sweep 2.5s linear infinite;
+}
+@keyframes live-sweep {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+
+/* ── HUD corner brackets animation when alert ── */
+#vid-box.af .hud-tl,
+#vid-box.af .hud-tr,
+#vid-box.af .hud-bl,
+#vid-box.af .hud-br {
+  border-color: rgba(245,158,11,0.85);
+  filter: drop-shadow(0 0 4px rgba(245,158,11,0.6));
+}
+#vid-box.as .hud-tl,
+#vid-box.as .hud-tr,
+#vid-box.as .hud-bl,
+#vid-box.as .hud-br {
+  border-color: rgba(168,85,247,0.85);
+  filter: drop-shadow(0 0 4px rgba(168,85,247,0.6));
+}
+
+/* ── Stats overlay enhanced ── */
+.stats-box {
+  animation: vg-enter 0.5s cubic-bezier(0.22,1,0.36,1) both;
+}
+

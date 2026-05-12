@@ -79,6 +79,105 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 
 /* ── Confidence slider label ── */
 #conf-val { min-width: 30px; font-size:0.78rem; color:var(--vg-gold); font-family:'JetBrains Mono',monospace; }
+
+/* ═══════════ PREMIUM HISTORY ENHANCEMENTS ═══════════ */
+
+/* Page entrance */
+body { animation: page-in 0.4s ease both; }
+@keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Stat strip stagger */
+.hist-stats .vg-stat-tile { animation: vg-enter 0.4s ease both; }
+.hist-stats .vg-stat-tile:nth-child(1) { animation-delay: 0.05s; }
+.hist-stats .vg-stat-tile:nth-child(2) { animation-delay: 0.12s; }
+.hist-stats .vg-stat-tile:nth-child(3) { animation-delay: 0.19s; }
+.hist-stats .vg-stat-tile:nth-child(4) { animation-delay: 0.26s; }
+@keyframes vg-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Table entrance */
+.inc-table-wrap { animation: vg-enter 0.45s ease 0.2s both; }
+
+/* Table row hover: left accent slides in via transform */
+.inc-table tr {
+  transition: background 0.15s ease;
+  position: relative;
+}
+.inc-table tbody tr::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.18s ease;
+  border-radius: 2px;
+}
+.inc-table tbody tr.sev-critical::before { background: var(--vg-red);    }
+.inc-table tbody tr.sev-high::before     { background: var(--vg-orange);  }
+.inc-table tbody tr.sev-moderate::before { background: var(--vg-gold);    }
+.inc-table tbody tr.sev-low::before      { background: var(--vg-green);   }
+.inc-table tbody tr.sev-unknown::before  { background: var(--vg-muted);   }
+.inc-table tbody tr:hover::before { transform: scaleY(1); }
+.inc-table tbody tr:hover td {
+  background: rgba(255,255,255,0.025);
+}
+
+/* Confidence bar animate-in */
+.inc-conf-fill {
+  animation: conf-grow 0.6s cubic-bezier(0.22,1,0.36,1) both;
+  transform-origin: left;
+}
+@keyframes conf-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Empty state float */
+.inc-empty .ei {
+  display: block;
+  animation: vg-float 4s ease-in-out infinite;
+}
+@keyframes vg-float {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-8px); }
+}
+
+/* Drawer content entrance */
+#drawer-content > * {
+  animation: vg-enter-r 0.35s ease both;
+}
+@keyframes vg-enter-r {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Narrative block: gold left border glow */
+.drawer-narrative {
+  transition: border-color 0.3s ease;
+}
+.drawer-narrative:hover {
+  border-left-color: var(--vg-gold);
+}
+
+/* Actions list: stagger entrance */
+.drawer-actions-list li {
+  animation: vg-enter 0.3s ease both;
+}
+.drawer-actions-list li:nth-child(1) { animation-delay: 0.05s; }
+.drawer-actions-list li:nth-child(2) { animation-delay: 0.10s; }
+.drawer-actions-list li:nth-child(3) { animation-delay: 0.15s; }
+.drawer-actions-list li:nth-child(4) { animation-delay: 0.20s; }
+
+/* Filmstrip image hover lift */
+.vg-filmstrip img {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.vg-filmstrip img:hover {
+  transform: scale(1.04);
+  border-color: var(--vg-gold);
+}
 </style>
 <script>
   if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';
@@ -97,7 +196,10 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   </div>
   <div class="nav-right" style="display:flex;align-items:center;gap:10px;">
     <span id="nav-nurse" style="font-size:0.78rem;color:var(--vg-muted);"></span>
-    <button class="btn-ui" onclick="window.location.href='/static/hub.html'">🔙 Back to Hub</button>
+    <a href="/static/hub.html"
+       style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:#e2e8f0;padding:8px 16px;border-radius:7px;font-size:0.8rem;font-weight:600;text-decoration:none;cursor:pointer;transition:background 0.2s;"
+       onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+       onmouseout="this.style.background='rgba(255,255,255,0.05)'">🔙 Back to Hub</a>
   </div>
 </div>
 

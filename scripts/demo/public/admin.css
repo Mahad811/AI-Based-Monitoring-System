@@ -174,3 +174,150 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .btn-del:hover   { background: var(--red); color: #000; }
 .btn-del:disabled{ opacity: 0.3; cursor: not-allowed; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PREMIUM ADMIN ENHANCEMENTS
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Page entrance ── */
+#admin-shell {
+  animation: admin-fadein 0.4s ease both;
+}
+@keyframes admin-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Sidebar: gold left accent on brand ── */
+#admin-sidebar {
+  position: relative;
+}
+#admin-sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(220,165,76,0.15) 30%,
+    rgba(220,165,76,0.25) 50%,
+    rgba(220,165,76,0.15) 70%,
+    transparent 100%);
+}
+
+/* ── Sidebar logo shimmer ── */
+.logo-brand {
+  background: linear-gradient(90deg, #dca54c 0%, #ffe0a0 40%, #dca54c 60%, #a0650a 85%, #dca54c 100%);
+  background-size: 250% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: logo-shimmer 5s linear infinite;
+}
+@keyframes logo-shimmer { to { background-position: 250% center; } }
+
+/* ── Sidebar tab hover: slide-right indicator ── */
+.sb-tab {
+  position: relative;
+  overflow: hidden;
+}
+.sb-tab::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--gold);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  border-radius: 0 2px 2px 0;
+}
+.sb-tab.active::before,
+.sb-tab:hover::before { transform: scaleY(1); }
+.sb-tab:hover::before { opacity: 0.5; }
+
+/* ── Tab crossfade (replaces instant swap) ── */
+.admin-tab {
+  display: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.admin-tab.active {
+  display: block;
+  animation: tab-fadein 0.32s ease both;
+}
+@keyframes tab-fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Stat tiles: staggered entrance + hover lift ── */
+.stats-row .vg-stat-tile:nth-child(1) { animation: vg-enter 0.4s ease 0.05s both; }
+.stats-row .vg-stat-tile:nth-child(2) { animation: vg-enter 0.4s ease 0.12s both; }
+.stats-row .vg-stat-tile:nth-child(3) { animation: vg-enter 0.4s ease 0.19s both; }
+.stats-row .vg-stat-tile:nth-child(4) { animation: vg-enter 0.4s ease 0.26s both; }
+
+@keyframes vg-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Stat value enhanced typography ── */
+.vg-stat-value {
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+/* ── Glass card enhanced ── */
+.glass-card {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  animation: vg-enter 0.45s ease both;
+}
+.glass-card:hover {
+  border-color: rgba(255,255,255,0.12);
+}
+
+/* ── Card header accent ── */
+.card-header::after {
+  content: '';
+  display: block;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(220,165,76,0.2), transparent);
+  pointer-events: none;
+}
+.card-header { position: relative; }
+
+/* ── Roster grid cards: staggered entrance ── */
+.roster-grid .vg-profile-card { animation: vg-enter 0.4s ease both; }
+.roster-grid .vg-profile-card:nth-child(1) { animation-delay: 0.08s; }
+.roster-grid .vg-profile-card:nth-child(2) { animation-delay: 0.14s; }
+.roster-grid .vg-profile-card:nth-child(3) { animation-delay: 0.20s; }
+.roster-grid .vg-profile-card:nth-child(4) { animation-delay: 0.26s; }
+.roster-grid .vg-profile-card:nth-child(5) { animation-delay: 0.32s; }
+.roster-grid .vg-profile-card:nth-child(6) { animation-delay: 0.38s; }
+
+/* ── Activity feed row: slide-in stagger ── */
+.vg-activity-feed .vg-activity-item { animation: vg-enter-r 0.35s ease both; }
+.vg-activity-feed .vg-activity-item:nth-child(1) { animation-delay: 0.05s; }
+.vg-activity-feed .vg-activity-item:nth-child(2) { animation-delay: 0.10s; }
+.vg-activity-feed .vg-activity-item:nth-child(3) { animation-delay: 0.15s; }
+.vg-activity-feed .vg-activity-item:nth-child(4) { animation-delay: 0.20s; }
+.vg-activity-feed .vg-activity-item:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes vg-enter-r {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Pdot enhanced ── */
+.pdot {
+  box-shadow: 0 0 8px var(--green), 0 0 16px rgba(52,211,153,0.2);
+  animation: pdot-pulse 2s ease-in-out infinite alternate;
+}
+@keyframes pdot-pulse {
+  from { box-shadow: 0 0 5px var(--green); }
+  to   { box-shadow: 0 0 14px var(--green), 0 0 28px rgba(52,211,153,0.2); }
+}
+
