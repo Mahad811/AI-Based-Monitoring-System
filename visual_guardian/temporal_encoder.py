@@ -29,9 +29,8 @@ class TemporalEncoder:
             return None
 
         frames = list(self.frame_buffer)
-
         clip = []
-        for i in range(0, self.BUFFER, 2):   # stride-2: indices 0,2,4,...,30 -> 16 frames
+        for i in range(0, self.BUFFER, 2):   # stride-2: 32->16
             frm = frames[i]
             if detection is not None:
                 x1, y1, x2, y2 = detection['bbox']
@@ -46,11 +45,10 @@ class TemporalEncoder:
                     frm = cv2.resize(frm, (self.frame_size, self.frame_size))
             else:
                 frm = cv2.resize(frm, (self.frame_size, self.frame_size))
-
             rgb = cv2.cvtColor(frm, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
             clip.append(rgb)
 
-        return np.stack(clip)   # (16, H, W, 3)
+        return np.stack(clip)  # (16, H, W, 3)
 
     def reset(self):
         self.frame_buffer.clear()

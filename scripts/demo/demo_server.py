@@ -18,6 +18,32 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GLOG_minloglevel'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'  # prevent TF from grabbing all VRAM
+
+# ── Pre-initialize TF GPU context BEFORE PyTorch/YOLO loads ──────────────────
+# ROOT CAUSE OF cuDNN FAILURE: PyTorch (YOLO) creates a CUDA primary context first.
+# When TF then calls cudnnCreate() on the same device, it fails with
+# "DNN library initialization failed" because cuDNN can't acquire the context.
+# Fix: let TF claim its CUDA/cuDNN context FIRST, then PyTorch co-exists fine.
+import tensorflow as _tf_init
+_tf_init.get_logger().setLevel('ERROR')
+try:
+    _gpus = _tf_init.config.list_physical_devices('GPU')
+    if _gpus:
+        # Allow memory growth so TF and PyTorch share VRAM without crashing
+        for _g in _gpus:
+            _tf_init.config.experimental.set_memory_growth(_g, True)
+        # Run a trivial GPU op to force cuDNN handle creation NOW (main thread, before YOLO)
+        with _tf_init.device('/GPU:0'):
+            _ = _tf_init.constant([1.0]) + _tf_init.constant([1.0])
+        print(f"  [TF] GPU context pre-initialized ({len(_gpus)} GPU(s)) — cuDNN ready before YOLO")
+except Exception as _e:
+    print(f"  [TF] GPU pre-init skipped: {_e}")
+del _tf_init, _gpus
+# ─────────────────────────────────────────────────────────────────────────────
+
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
 
 import sys
 import time
@@ -155,10 +181,20 @@ app = FastAPI(title="Vital Guardian Web API")
 
 PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+(PUBLIC_DIR / "audio").mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
+# Serve raw demo clips (MP4) directly so the browser can play embedded AAC audio
+# without needing any server-side WAV extraction or format conversion.
+app.mount("/clips", StaticFiles(directory=str(_DATASET_ROOT)), name="clips")
 
 # Rolling deque of Tier-3 verify durations (seconds) for avg-verify-time stat
 _verify_times: collections.deque = collections.deque(maxlen=50)
+
+# ── Nurse Dashboard Alert Store ───────────────────────────────────────────────
+# Holds confirmed alerts for the privacy-respecting nurse dashboard.
+# No video frames are stored here — only anonymised clinical metadata.
+_nurse_alerts: list = []
+_nurse_alert_counter: int = 0
 
 @app.on_event("startup")
 def startup_event():
@@ -492,6 +528,34 @@ def get_audit(
         } for a in items],
     }
 
+# ─────────────────────────────────────────────────────
+# NURSE DASHBOARD ENDPOINTS
+# ─────────────────────────────────────────────────────
+@app.get("/api/nurse/alerts")
+def get_nurse_alerts():
+    """Return all confirmed alerts for the nurse dashboard (no video frames)."""
+    return {"alerts": list(reversed(_nurse_alerts)), "count": len(_nurse_alerts)}
+
+@app.post("/api/nurse/alerts/{alert_id}/acknowledge")
+def acknowledge_nurse_alert(alert_id: int, req: Request):
+    """Mark a nurse alert as acknowledged."""
+    global _nurse_alerts
+    for a in _nurse_alerts:
+        if a["id"] == alert_id:
+            a["acknowledged"] = True
+            a["ack_by"] = req.headers.get("X-Nurse-Name", "Nurse")
+            a["ack_time"] = datetime.datetime.now().strftime("%H:%M:%S")
+            return {"status": "ok"}
+    raise HTTPException(status_code=404, detail="Alert not found")
+
+@app.delete("/api/nurse/alerts")
+def clear_nurse_alerts():
+    """Clear all nurse alerts (end of session)."""
+    global _nurse_alerts, _nurse_alert_counter
+    _nurse_alerts = []
+    _nurse_alert_counter = 0
+    return {"status": "cleared"}
+
 @app.get("/api/admin/health")
 async def get_health(_: None = Depends(verify_admin)):
     # Postgres — simple round-trip query
@@ -579,6 +643,71 @@ class SegmentConsolidator:
 def move_models_to_gpu(pipeline):
     """GPU warm-up for TF models (TF handles GPU placement automatically)."""
     pass  # TensorFlow models auto-place on GPU; no manual .to(device) needed
+
+
+# ─────────────────────────────────────────────────────
+# FRAME PREFETCHER  (Phase 4B)
+# ─────────────────────────────────────────────────────
+class FramePrefetcher:
+    """
+    Runs cap.read() in a dedicated background thread so CPU video decoding
+    overlaps with GPU inference in the main loop.
+
+    Without this, the main loop serialises:
+        [cap.read (CPU, ~5ms)] → [process_frame (GPU, ~10ms)] → repeat
+    Gap: GPU is idle for ~5ms every frame waiting for decode.
+
+    With prefetch, the background thread always has the next 2 frames ready,
+    so the main loop never stalls on decode:
+        BG:   cap.read → cap.read → cap.read ...
+        Main: process_frame → process_frame ...  (zero decode wait)
+
+    Drop-in replacement for cv2.VideoCapture — exposes read() with the same
+    (ret, frame) signature.  Call stop() when done.
+    """
+
+    BUFFER_SIZE = 3  # frames to prefetch ahead (small to keep latency low)
+
+    def __init__(self, cap: cv2.VideoCapture):
+        self._cap   = cap
+        self._buf   = queue.Queue(maxsize=self.BUFFER_SIZE)
+        self._stop  = threading.Event()
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def _worker(self):
+        while not self._stop.is_set():
+            if self._buf.full():
+                # Buffer full — back off briefly so we don't spin
+                self._stop.wait(timeout=0.001)
+                continue
+            ret, frame = self._cap.read()
+            try:
+                self._buf.put((ret, frame), timeout=0.05)
+            except queue.Full:
+                pass
+
+    def read(self):
+        """Return (ret, frame) — blocks briefly if buffer is momentarily empty."""
+        try:
+            return self._buf.get(timeout=0.1)
+        except queue.Empty:
+            return False, None
+
+    def get(self, prop_id):
+        """Proxy for cap.get() so callers don't need to keep original cap ref."""
+        return self._cap.get(prop_id)
+
+    def set(self, prop_id, value):
+        """Proxy for cap.set()."""
+        self._buf.queue.clear()  # flush stale frames after seek
+        return self._cap.set(prop_id, value)
+
+    def stop(self):
+        """Signal the decode thread to exit and release the capture."""
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+        self._cap.release()
 
 
 # ─────────────────────────────────────────────────────
@@ -797,6 +926,70 @@ class PipelineService:
                 except Exception:
                     pass
 
+                # ── Push to nurse dashboard store ────────────────────────────
+                global _nurse_alerts, _nurse_alert_counter
+                try:
+                    # Detect alert category (audio vs vision)
+                    is_audio_alert = "auditory" in etype.lower() or "audio" in etype.lower()
+                    alert_category = "audio" if is_audio_alert else "vision"
+
+                    # For display: audio gets a short headline, vision uses the raw etype
+                    if is_audio_alert:
+                        display_type = "AUDIO — RESPIRATORY DISTRESS"
+                    elif "fall" in etype.lower():
+                        display_type = "FALL"
+                    elif "seizure" in etype.lower():
+                        display_type = "SEIZURE"
+                    else:
+                        display_type = etype.upper()
+
+                    # Patient lookup — try name match first (works for audio where
+                    # the etype is a long timeline string, not a DB incident_type key)
+                    db_pt = SessionLocal()
+                    pt_row = None
+                    try:
+                        active_name = self._active_patient  # set by play_patient_clip
+                        if active_name and active_name != "Patient":
+                            pt_row = db_pt.query(Patient).filter(Patient.name == active_name).first()
+                    except Exception:
+                        pass
+                    # Fallback: scan recent incident logs for a type match
+                    if pt_row is None:
+                        log_rows2 = (db_pt.query(IncidentLog)
+                                     .order_by(IncidentLog.timestamp.desc())
+                                     .limit(max(int(aid) if isinstance(aid, (int, float)) else 10, 10) + 5).all())
+                        for row in log_rows2:
+                            if etype in (row.incident_type or ""):
+                                pt_row = db_pt.query(Patient).filter(Patient.id == row.patient_id).first()
+                                break
+                            # For audio: match any AUDIO: * row
+                            if is_audio_alert and (row.incident_type or "").startswith("AUDIO:"):
+                                pt_row = db_pt.query(Patient).filter(Patient.id == row.patient_id).first()
+                                break
+                    db_pt.close()
+
+                    _nurse_alert_counter += 1
+                    _nurse_alerts.append({
+                        "id":             _nurse_alert_counter,
+                        "incident_type":  display_type,
+                        "alert_category": alert_category,
+                        "severity":       t3.get("severity", "moderate"),
+                        "headline":       t3.get("headline", f"{display_type} confirmed"),
+                        "narrative":      t3.get("narrative", ""),
+                        "actions":        t3.get("actions", []),
+                        "confidence":     round(conf * 100),
+                        "timestamp":      datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "time_str":       datetime.datetime.now().strftime("%H:%M:%S"),
+                        "patient_id":     f"PT-{pt_row.id:05d}" if pt_row else "PT-AUDIO",
+                        "ward":           pt_row.room if pt_row else "Respiratory ICU",
+                        "acknowledged":   False,
+                        "ack_by":         None,
+                        "ack_time":       None,
+                    })
+                    print(f"  [NurseDash] Pushed alert #{_nurse_alert_counter} ({display_type}) — patient: {pt_row.name if pt_row else 'unknown'}")
+                except Exception as _ne:
+                    print(f"  [NurseDash] Failed to push alert: {_ne}")
+
                 await self.broadcast({
                     "type":     "gemini_report",
                     "alert_id": aid,
@@ -998,39 +1191,59 @@ class PipelineService:
                 raw_frame_idx = 0
 
                 # ── Pre-buffer: prime the temporal buffers before streaming ──────
-                # Fall needs 32 frames / Seizure needs 64 before the model can
-                # fire. We read the first N effective frames, run them through
-                # process_frame() to fill internal buffers (and fire the first
-                # Kaggle request), then SEEK BACK to frame 0 so the UI shows
-                # the complete clip from the start — no frames are skipped.
-                PREBUFFER_FRAMES = 64 if seg["type"] == "seizure" else 32
-                prebuf_raw  = 0
-                prebuf_kept = 0
-                while prebuf_kept < PREBUFFER_FRAMES:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    prebuf_raw += 1
-                    if (prebuf_raw - 1) % keep_every != 0:
-                        continue
-                    h, w = frame.shape[:2]
-                    if h > w * 1.5:
-                        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-                    self.pipeline.process_frame(frame)
-                    prebuf_kept += 1
-                # Seek back so the UI loop replays the full clip from frame 1
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                # Only run in KAGGLE mode — it pre-fires the HTTP request so the
+                # Kaggle API is already responding by the time the clip hits the
+                # model's event window.
+                # In LOCAL mode we skip it entirely: the model's internal ring
+                # buffer fills naturally frame-by-frame, and blocking the asyncio
+                # event loop here (first GPU inference = cuDNN JIT compile, up to
+                # 30s) causes the dreaded "black screen" with no video for minutes.
+                if INFERENCE_MODE == "KAGGLE":
+                    PREBUFFER_FRAMES = 64 if seg["type"] == "seizure" else 32
+                    prebuf_raw  = 0
+                    prebuf_kept = 0
+                    while prebuf_kept < PREBUFFER_FRAMES:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        prebuf_raw += 1
+                        if (prebuf_raw - 1) % keep_every != 0:
+                            continue
+                        h, w = frame.shape[:2]
+                        if h > w * 1.5:
+                            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                        self.pipeline.process_frame(frame)
+                        prebuf_kept += 1
+                        if prebuf_kept % 8 == 0:
+                            await asyncio.sleep(0)
+                    # Seek back so the UI loop replays the full clip from frame 1
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
                 raw_frame_idx = 0
                 audio_sec_injected = 0
+
 
                 # Tell the browser to start playing the audio track NOW — this fires
                 # exactly when the first frame begins streaming, after pre-buffering,
                 # so audio and video are in sync.
-                if is_audio_clip and audio_data is not None:
+                #
+                # We serve the MP4 clip directly (/clips/ mount) and let the browser
+                # extract the embedded AAC audio (44100 Hz stereo) natively.
+                # This is more reliable than WAV conversion: no librosa dependency,
+                # no format issues, and works even if audio analytics fail.
+                if is_audio_clip:
+                    from urllib.parse import quote as _urlencode
+                    try:
+                        _clip_relative = clip_path.relative_to(_DATASET_ROOT)
+                        _clip_url = "/clips/" + _urlencode(str(_clip_relative))
+                    except ValueError:
+                        # clip_path not under _DATASET_ROOT (unusual) — fallback to WAV
+                        _clip_url = f"/static/audio/patient_{p.id}.wav"
                     await self.broadcast({
                         "type":      "audio_track",
-                        "audio_url": f"/static/audio/patient_{p.id}.wav",
+                        "audio_url": _clip_url,
                     })
+                    print(f"  [Audio] Browser audio URL: {_clip_url}")
 
                 while True:
                     # Handle pause state
@@ -1089,7 +1302,8 @@ class PipelineService:
                         top2_fall_mean = 0.0
                         top2_sz_mean   = 0.0
                     else:
-                        event   = self.pipeline.process_frame(frame)
+                        event = self.pipeline.process_frame(frame)
+
                         # Track top-2 mean — same logic as evaluate_fall_test.py
                         raw_fall = self.pipeline.fall_classifier._last_fall_prob \
                                    if self.pipeline.fall_classifier else 0.0
@@ -1204,7 +1418,7 @@ class PipelineService:
                     await asyncio.sleep(0.001)  # yield to event loop
 
                 cap.release()
-                
+
                 # RE-ENABLE REAL MICROPHONE after an audio clip that stopped it for WAV injection.
                 # Vision clips leave the mic off intentionally — live feed handles its own start.
                 if audio_data is not None:

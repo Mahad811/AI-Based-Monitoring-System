@@ -103,6 +103,21 @@ class SeizureClassifier:
             with self._infer_lock:
                 self._in_flight = max(0, self._in_flight - 1)
 
+    # ── Background LOCAL worker (fire-and-forget, mirrors KAGGLE pattern) ──────
+    def _fire_local_request(self, x: np.ndarray, gen: int):
+        """Runs GPU inference in a daemon thread. Never blocks the frame loop."""
+        try:
+            x_input      = np.expand_dims(x, axis=0)
+            seizure_prob = float(self.model.predict_on_batch(x_input).flatten()[0])
+        except Exception as e:
+            print(f"  [SeizureClassifier] LOCAL inference error: {e}")
+            seizure_prob = 0.0
+        finally:
+            with self._infer_lock:
+                if gen == self._generation:   # discard stale results from old segments
+                    self._last_seizure_prob = seizure_prob
+                self._in_flight = max(0, self._in_flight - 1)
+
     # ── Segment lifecycle ─────────────────────────────────────────────────────
     def reset_for_segment(self) -> None:
         """
@@ -183,8 +198,24 @@ class SeizureClassifier:
             with self._infer_lock:
                 seizure_prob = self._last_seizure_prob
         else:
-            x_input      = np.expand_dims(x, axis=0)
-            seizure_prob = float(self.model.predict_on_batch(x_input).flatten()[0])
+            # LOCAL mode: fire-and-forget in background thread (mirrors KAGGLE pattern)
+            # Never blocks — returns last known probability immediately.
+            gen = self._generation
+            with self._infer_lock:
+                can_fire = self._in_flight < MAX_CONCURRENT
+                if can_fire:
+                    self._in_flight += 1
+
+            if can_fire:
+                t = threading.Thread(
+                    target=self._fire_local_request,
+                    args=(x.copy(), gen),
+                    daemon=True
+                )
+                t.start()
+
+            with self._infer_lock:
+                seizure_prob = self._last_seizure_prob
 
         normal_prob = 1.0 - seizure_prob
         return {
