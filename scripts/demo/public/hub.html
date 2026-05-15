@@ -398,6 +398,10 @@ body::before {
       <div class="nav-av" id="hub-nav-av"></div>
       <span id="hub-nav-name" style="font-size:0.78rem;font-weight:600;color:#e2e8f0;"></span>
     </div>
+    <a href="/static/nurse_dashboard.html" class="btn-ui" id="btn-nurse-dash" style="color:#ef4444;border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);position:relative;">
+      🚨 Nurse Dashboard
+      <span id="nurse-badge-dot" style="display:none;position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;animation:pglow 1.5s ease-in-out infinite alternate;"></span>
+    </a>
     <a href="/static/history.html" class="btn-ui">📋 Incident Logs</a>
     <a href="/static/admin.html" id="admin-hub-btn" class="btn-ui" style="display:none;color:#dca54c;border-color:rgba(220,165,76,0.35);">⚡ Command Center</a>
     <button onclick="logout()" class="btn-ui" style="color:#ef4444;border-color:rgba(239,68,68,0.25);">Logout</button>
@@ -457,6 +461,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadPatients();
   loadHubStats();
+
+  // Poll for unacknowledged nurse alerts → show badge dot
+  async function pollNurseAlerts() {
+    try {
+      const d = await VG.fetchJSON('/api/nurse/alerts');
+      const unacked = (d.alerts || []).filter(a => !a.acknowledged).length;
+      const dot = document.getElementById('nurse-badge-dot');
+      if (dot) dot.style.display = unacked > 0 ? 'block' : 'none';
+    } catch(_) {}
+  }
+  pollNurseAlerts();
+  setInterval(pollNurseAlerts, 6000);
 });
 
 function logout() {

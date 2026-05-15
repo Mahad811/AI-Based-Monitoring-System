@@ -106,10 +106,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync sound toggle pill to persisted state
     VGAudio._syncBtn();
 
-    // Unlock AudioContext on first user gesture
-    const _unlock = () => { VGAudio.unlock(); };
-    document.addEventListener('click',      _unlock, { once: true });
-    document.addEventListener('touchstart', _unlock, { once: true });
+    // Try to capture the navigation user-gesture to resume AudioContext immediately.
+    // This is the ONLY reliable way to allow autoplay from WebSocket handlers:
+    // once ctx.state === 'running', Web Audio API can schedule audio without
+    // any further user gesture requirements.
+    if (window._vgAudioCtx) {
+      window._vgAudioCtx.resume().then(() => {
+        // Context is running — if an audio_track arrived already, play it now
+        if (window._pendingAudioUrl) {
+          _playViaWebAudio(window._pendingAudioUrl);
+          window._pendingAudioUrl = null;
+        }
+      }).catch(() => {});
+    }
+
+    // Fallback: any click on the patient page also resumes + plays pending audio
+    const _unlockAndResume = () => {
+      VGAudio.unlock();
+      if (window._vgAudioCtx && window._vgAudioCtx.state === 'suspended') {
+        window._vgAudioCtx.resume().then(() => {
+          if (window._pendingAudioUrl) {
+            _playViaWebAudio(window._pendingAudioUrl);
+            window._pendingAudioUrl = null;
+          }
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('click',      _unlockAndResume);
+    document.addEventListener('touchstart', _unlockAndResume);
 
     // Space bar → acknowledge active alert banner
     document.addEventListener('keydown', e => {
@@ -879,32 +903,122 @@ function onAudioAlert(a) {
   }
 }
 
-/* ── Clip Audio Playback ──────────────────────────────────────────────────────
-   The backend extracts the audio track from each audio-demo clip into a WAV
-   file and serves it as /static/audio/patient_N.wav.  When the frame loop
-   starts (post-prebuffering) it broadcasts an audio_track message so the
-   browser plays the audio in sync with the first frame.
+/* ── Clip Audio Playback (Web Audio API) ──────────────────────────────────────
+   Uses Web Audio API (fetch → decodeAudioData → AudioBufferSourceNode) instead
+   of HTMLMediaElement.  Once the AudioContext is running (resumed by the page's
+   navigation click or the first user interaction), audio can be scheduled from
+   ANY async context — including WebSocket message handlers — without triggering
+   the browser autoplay policy.
+
+   The AudioContext is created once and shared (_vgAudioCtx on window).
+   If the context is still suspended when audio_track arrives, the URL is stored
+   in _pendingAudioUrl and played as soon as the first click resumes the context.
 ─────────────────────────────────────────────────────────────────────────── */
-let _clipAudio = null;
+
+// Shared AudioContext — created once, lives for the page lifetime
+if (!window._vgAudioCtx) {
+  window._vgAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+let _clipAudio        = null;   // current AudioBufferSourceNode
+let _clipAudioGain    = null;   // GainNode for volume control
 
 function stopClipAudio() {
+  // Stop Web Audio source if playing
   if (_clipAudio) {
-    _clipAudio.pause();
-    _clipAudio.src = '';
+    try { _clipAudio.stop(); } catch(_) {}
     _clipAudio = null;
+  }
+  if (_clipAudioGain) {
+    try { _clipAudioGain.disconnect(); } catch(_) {}
+    _clipAudioGain = null;
+  }
+  // Clear pending URL
+  window._pendingAudioUrl = null;
+  // Hide the audio bar
+  const bar = document.getElementById('audio-bar');
+  if (bar) bar.style.display = 'none';
+  // Also stop the fallback DOM element if it exists
+  const el = document.getElementById('clip-audio');
+  if (el) { try { el.pause(); el.removeAttribute('src'); } catch(_) {} }
+}
+
+async function _playViaWebAudio(url) {
+  const labelEl = document.getElementById('audio-bar-label');
+  try {
+    const ctx = window._vgAudioCtx;
+    // Resume if suspended (required before any sound can play)
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — Loading audio…';
+
+    // Fetch the audio file (MP4 with AAC, or WAV) as raw bytes
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const arrayBuf = await response.arrayBuffer();
+
+    // Decode to PCM — browser handles AAC/WAV natively
+    const audioBuf = await ctx.decodeAudioData(arrayBuf);
+
+    // Stop any previously playing source
+    if (_clipAudio) { try { _clipAudio.stop(); } catch(_) {} }
+
+    // Create and connect nodes: source → gain → speakers
+    const gain   = ctx.createGain();
+    gain.gain.value = 0.85;
+    gain.connect(ctx.destination);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuf;
+    source.connect(gain);
+    source.start(0);  // start immediately
+
+    _clipAudio     = source;
+    _clipAudioGain = gain;
+
+    if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — RESPIRATORY MONITORING (Playing)';
+
+    // Auto-hide bar when clip ends
+    source.onended = () => {
+      const bar = document.getElementById('audio-bar');
+      if (bar) bar.style.display = 'none';
+    };
+  } catch(err) {
+    console.warn('[VG Audio] Web Audio playback failed:', err);
+    if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — ' + err.message;
+    // Fallback: try native <audio> element
+    const el = document.getElementById('clip-audio');
+    if (el) {
+      el.src = url; el.volume = 0.85; el.load();
+      el.play().catch(() => {
+        if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — Click ▶ to hear clip';
+      });
+    }
   }
 }
 
 function onAudioTrack(d) {
   stopClipAudio();
-  const audio = new Audio(d.audio_url + '?t=' + Date.now()); // cache-bust on each patient
-  audio.volume = 0.85;
-  audio.play().catch(() => {
-    // Autoplay blocked until a user gesture — the AudioContext unlock in DOMContentLoaded
-    // already fired a gesture handler; if autoplay is still blocked the user will need
-    // to interact with the page once.
-  });
-  _clipAudio = audio;
+  const url = d.audio_url + '?t=' + Date.now();
+
+  // Show the audio bar immediately
+  const bar     = document.getElementById('audio-bar');
+  const labelEl = document.getElementById('audio-bar-label');
+  if (bar) bar.style.display = '';
+  if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — Starting…';
+
+  const ctx = window._vgAudioCtx;
+  if (ctx && ctx.state === 'running') {
+    // AudioContext is already running — play immediately
+    _playViaWebAudio(url);
+  } else {
+    // AudioContext suspended (no user gesture yet on this page).
+    // Store URL; _unlockAndResume will play it on first click.
+    window._pendingAudioUrl = url;
+    if (labelEl) labelEl.textContent = '🎙 AUDIO DEMO — Click anywhere to hear audio';
+    // Also set DOM audio as fallback so native controls work
+    const el = document.getElementById('clip-audio');
+    if (el) { el.src = url; el.volume = 0.85; el.load(); }
+  }
 }
 
 /* ── Gauges ── */

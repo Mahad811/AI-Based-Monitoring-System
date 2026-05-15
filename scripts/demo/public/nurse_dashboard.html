@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vital Guardian — Nurse Alert Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vg-ui.css">
+<script>if (!localStorage.getItem('vg_token')) window.location.href = '/static/login.html';</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;}
+body{margin:0;padding:0;font-family:'Inter',sans-serif;background:#060910;color:#e2e8f0;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(rgba(255,255,255,0.045) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;z-index:0;}
+.hub-bg{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0;}
+.blob{position:absolute;border-radius:50%;filter:blur(80px);}
+.blob.b1{width:500px;height:500px;background:radial-gradient(circle,rgba(239,68,68,0.45) 0%,rgba(239,68,68,0.04) 70%);top:-180px;left:-100px;animation:bf1 16s ease-in-out infinite alternate;}
+.blob.b2{width:600px;height:600px;background:radial-gradient(circle,rgba(139,92,246,0.4) 0%,rgba(139,92,246,0.04) 70%);bottom:-220px;right:-150px;animation:bf2 18s ease-in-out infinite alternate;}
+.blob.b3{width:400px;height:400px;background:radial-gradient(circle,rgba(220,165,76,0.35) 0%,rgba(220,165,76,0.04) 70%);top:-60px;left:42%;animation:bf3 13s ease-in-out infinite alternate;}
+@keyframes bf1{0%{transform:translate(0,0);}100%{transform:translate(35px,25px);}}
+@keyframes bf2{0%{transform:translate(0,0);}100%{transform:translate(-30px,-20px);}}
+@keyframes bf3{0%{transform:translate(0,0);}100%{transform:translate(-18px,30px);}}
+
+/* Navbar */
+#navbar{position:relative;z-index:10;display:flex;justify-content:space-between;align-items:center;background:rgba(6,9,16,0.88);border-bottom:1px solid rgba(220,165,76,0.15);padding:14px 28px;box-shadow:0 4px 24px rgba(0,0,0,0.35);}
+#navbar::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(220,165,76,0.5) 40%,rgba(220,165,76,0.7) 50%,rgba(220,165,76,0.5) 60%,transparent);background-size:200% 100%;animation:nav-sh 4s linear infinite;}
+@keyframes nav-sh{from{background-position:-200% center;}to{background-position:200% center;}}
+.logo-area{display:flex;align-items:center;gap:10px;}
+.pdot{width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px #ef4444,0 0 20px rgba(239,68,68,0.3);animation:pglow 2s ease-in-out infinite alternate;}
+@keyframes pglow{from{box-shadow:0 0 6px #ef4444;}to{box-shadow:0 0 18px #ef4444,0 0 35px rgba(239,68,68,0.4);}}
+.logo-txt .logo-brand{font-size:0.88rem;font-weight:800;letter-spacing:2.5px;display:block;background:linear-gradient(90deg,#dca54c,#ffe0a0 35%,#dca54c 55%,#a0650a 80%,#dca54c);background-size:260% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:bsh 4.5s linear infinite;}
+@keyframes bsh{to{background-position:260% center;}}
+.logo-txt .logo-sub{font-size:0.6rem;color:#4b5a72;display:block;letter-spacing:0.8px;}
+.nav-right{display:flex;align-items:center;gap:10px;}
+.btn-ui{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:7px 14px;border-radius:7px;font-size:0.78rem;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;transition:all 0.2s;}
+.btn-ui:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.18);transform:translateY(-1px);}
+
+/* Main */
+#page{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 28px 60px;}
+
+/* Header */
+.dash-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;animation:enter 0.55s cubic-bezier(.22,1,.36,1) both;}
+@keyframes enter{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.dash-title h2{font-size:2rem;font-weight:800;margin:0 0 6px;background:linear-gradient(135deg,#fff 0%,#e2e8f0 60%,#8b9ab7 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.dash-title p{color:#8b9ab7;margin:0 0 10px;font-size:0.88rem;}
+.accent-line{height:2px;width:56px;background:linear-gradient(90deg,#ef4444,transparent);border-radius:2px;transform-origin:left;animation:ag 0.7s ease 0.3s both;}
+@keyframes ag{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+
+/* Stats bar */
+.stats-bar{display:flex;gap:14px;margin-bottom:28px;flex-wrap:wrap;}
+.stat-chip{background:rgba(10,14,24,0.75);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:14px 22px;text-align:center;min-width:110px;}
+.stat-num{display:block;font-size:1.6rem;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1;}
+.stat-lbl{display:block;font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#4b5a72;margin-top:4px;}
+
+/* Live indicator */
+.live-strip{display:flex;align-items:center;gap:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:8px 16px;font-size:0.78rem;font-weight:600;color:#fc6b6b;margin-bottom:24px;animation:enter 0.5s ease both;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px #ef4444;animation:pglow 1.6s ease-in-out infinite alternate;flex-shrink:0;}
+
+/* Section header */
+.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.section-title{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#8b9ab7;}
+
+/* Filter chips */
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.fchip{padding:5px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#8b9ab7;font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.2s;}
+.fchip:hover{border-color:rgba(255,255,255,0.16);color:#e2e8f0;}
+.fchip.active{background:rgba(239,68,68,0.15);border-color:rgba(239,68,68,0.35);color:#fc6b6b;}
+
+/* Alert cards */
+#alerts-list{display:flex;flex-direction:column;gap:14px;}
+.alert-card{background:rgba(10,14,24,0.78);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px 22px;position:relative;overflow:hidden;transition:border-color 0.25s,transform 0.22s,box-shadow 0.22s;animation:enter 0.4s cubic-bezier(.22,1,.36,1) both;}
+.alert-card:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,0.4);}
+.alert-card.fall{border-left:3px solid #f59e0b;}
+.alert-card.fall:hover{border-color:rgba(245,158,11,0.5);}
+.alert-card.seizure{border-left:3px solid #a855f7;}
+.alert-card.seizure:hover{border-color:rgba(168,85,247,0.5);}
+.alert-card.acknowledged{opacity:0.55;filter:grayscale(0.25);}
+.alert-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);}
+.ac-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px;}
+.ac-left{display:flex;align-items:flex-start;gap:14px;flex:1;}
+.ac-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.ac-icon.fall{background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);}
+.ac-icon.seizure{background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25);}
+.ac-meta{flex:1;}
+.ac-type{font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
+.ac-type.fall{color:#f59e0b;}
+.ac-type.seizure{color:#a855f7;}
+.ac-headline{font-size:1rem;font-weight:700;color:#fff;margin-bottom:4px;line-height:1.3;}
+.ac-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.ac-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;border:1px solid;}
+.sev-critical{background:rgba(239,68,68,0.12);color:#fc6b6b;border-color:rgba(239,68,68,0.3);}
+.sev-high{background:rgba(249,115,22,0.12);color:#f97316;border-color:rgba(249,115,22,0.3);}
+.sev-moderate{background:rgba(220,165,76,0.12);color:#dca54c;border-color:rgba(220,165,76,0.3);}
+.sev-low{background:rgba(52,211,153,0.12);color:#34d399;border-color:rgba(52,211,153,0.3);}
+.pill-ward{background:rgba(56,189,248,0.1);color:#38bdf8;border-color:rgba(56,189,248,0.25);}
+.pill-conf{background:rgba(255,255,255,0.06);color:#8b9ab7;border-color:rgba(255,255,255,0.12);}
+.pill-ack{background:rgba(52,211,153,0.1);color:#34d399;border-color:rgba(52,211,153,0.25);}
+
+.ac-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;}
+.ac-time{font-size:0.7rem;color:#4b5a72;font-family:'JetBrains Mono',monospace;}
+.ac-ptid{font-size:0.75rem;font-weight:700;color:#8b9ab7;font-family:'JetBrains Mono',monospace;letter-spacing:0.5px;}
+.btn-ack{background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;padding:6px 14px;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.2s;}
+.btn-ack:hover{background:rgba(52,211,153,0.22);transform:translateY(-1px);box-shadow:0 4px 14px rgba(52,211,153,0.2);}
+.btn-ack:disabled{opacity:0.4;cursor:default;transform:none;}
+
+/* Narrative */
+.ac-narrative{font-size:0.82rem;color:#8b9ab7;line-height:1.6;margin-bottom:12px;padding:10px 14px;background:rgba(0,0,0,0.2);border-radius:8px;border-left:2px solid rgba(255,255,255,0.07);}
+
+/* Actions list */
+.ac-actions{display:flex;flex-direction:column;gap:4px;}
+.ac-action-item{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:#8b9ab7;}
+.ac-action-item::before{content:'→';color:#ef4444;font-weight:700;flex-shrink:0;}
+.ac-action-item.fall::before{color:#f59e0b;}
+.ac-action-item.seizure::before{color:#a855f7;}
+
+/* Empty state */
+.empty-state{text-align:center;padding:60px 20px;color:#4b5a72;}
+.empty-icon{font-size:3.5rem;display:block;margin-bottom:16px;opacity:0.4;}
+.empty-title{font-size:1.1rem;font-weight:700;color:#8b9ab7;margin-bottom:8px;}
+.empty-sub{font-size:0.82rem;}
+
+/* Audio alert card */
+.alert-card.audio{border-left:3px solid #38bdf8;}
+.alert-card.audio:hover{border-color:rgba(56,189,248,0.5);}
+.ac-icon.audio{background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);}
+.ac-type.audio{color:#38bdf8;}
+.pill-audio{background:rgba(56,189,248,0.1);color:#38bdf8;border-color:rgba(56,189,248,0.25);}
+.ac-timeline{font-size:0.72rem;color:#4b5a72;font-family:'JetBrains Mono',monospace;margin-bottom:10px;padding:8px 12px;background:rgba(56,189,248,0.04);border:1px solid rgba(56,189,248,0.1);border-radius:7px;line-height:1.7;word-break:break-word;}
+.ac-timeline-lbl{font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#38bdf8;display:block;margin-bottom:4px;}
+/* Ack note */
+.ac-ack-note{display:flex;align-items:center;gap:6px;font-size:0.7rem;color:#34d399;margin-top:8px;padding:6px 12px;background:rgba(52,211,153,0.07);border-radius:6px;}
+</style>
+</head>
+<body>
+
+<div class="hub-bg">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+
+<div id="navbar">
+  <div class="logo-area">
+    <div class="pdot"></div>
+    <div class="logo-txt">
+      <span class="logo-brand">VITAL GUARDIAN</span>
+      <span class="logo-sub">Nurse Alert Dashboard</span>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span id="nav-nurse-name" style="font-size:0.78rem;font-weight:600;color:#dca54c;"></span>
+    <a href="/static/hub.html" class="btn-ui">🏥 Patient Hub</a>
+    <button onclick="clearAllAlerts()" class="btn-ui" style="color:#8b9ab7;" id="btn-clear">🗑 Clear Session</button>
+    <button onclick="logout()" class="btn-ui" style="color:#ef4444;border-color:rgba(239,68,68,0.25);">Logout</button>
+  </div>
+</div>
+
+<div id="page">
+
+  <div class="dash-header">
+    <div class="dash-title">
+      <h2>🚨 Nurse Alert Dashboard</h2>
+      <p>Real-time confirmed incident alerts · Patient identities protected · No video data displayed</p>
+      <div class="accent-line"></div>
+    </div>
+  </div>
+
+  <div id="live-strip" class="live-strip">
+    <div class="live-dot"></div>
+    <span>Live monitoring active — updates instantly when new alerts arrive</span>
+    <span style="margin-left:auto;font-size:0.7rem;color:#4b5a72;" id="last-refresh"></span>
+  </div>
+
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat-chip">
+      <span class="stat-num" id="stat-total" style="color:#ef4444;">0</span>
+      <span class="stat-lbl">Total Alerts</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-num" id="stat-unacked" style="color:#f59e0b;">0</span>
+      <span class="stat-lbl">Unacknowledged</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-num" id="stat-acked" style="color:#34d399;">0</span>
+      <span class="stat-lbl">Acknowledged</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-num" id="stat-falls" style="color:#f59e0b;">0</span>
+      <span class="stat-lbl">Falls</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-num" id="stat-seizures" style="color:#a855f7;">0</span>
+      <span class="stat-lbl">Seizures</span>
+    </div>
+  </div>
+
+  <div class="section-hdr">
+    <span class="section-title">Active Alerts</span>
+    <span id="alert-badge" style="font-size:0.7rem;color:#4b5a72;"></span>
+  </div>
+
+  <div class="filter-row">
+    <div class="fchip active" id="f-all" onclick="setFilter('all')">All</div>
+    <div class="fchip" id="f-unacked" onclick="setFilter('unacked')">Unacknowledged</div>
+    <div class="fchip" id="f-fall" onclick="setFilter('fall')">🤸 Falls</div>
+    <div class="fchip" id="f-seizure" onclick="setFilter('seizure')">⚡ Seizures</div>
+    <div class="fchip" id="f-audio" onclick="setFilter('audio')" style="color:#38bdf8;border-color:rgba(56,189,248,0.25);">🎙 Audio Alerts</div>
+  </div>
+
+  <div id="alerts-list">
+    <div class="empty-state">
+      <span class="empty-icon">🛡</span>
+      <div class="empty-title">No alerts yet</div>
+      <div class="empty-sub">When the AI system confirms an incident, it will appear here without exposing patient video.</div>
+    </div>
+  </div>
+
+</div>
+
+<div id="vg-toast-container"></div>
+<script src="vg-ui.js"></script>
+<script>
+'use strict';
+let _allAlerts = [];
+let _filter    = 'all';
+const nurseName = localStorage.getItem('vg_nurse_name') || 'Nurse';
+
+document.getElementById('nav-nurse-name').textContent = '👤 ' + nurseName;
+
+function logout() {
+  localStorage.clear();
+  window.location.href = '/static/login.html';
+}
+
+function setFilter(f) {
+  _filter = f;
+  ['all','unacked','fall','seizure','audio'].forEach(k => {
+    document.getElementById('f-' + k).classList.toggle('active', k === f);
+  });
+  renderAlerts();
+}
+
+function sevClass(s) {
+  const m = {critical:'sev-critical', high:'sev-high', moderate:'sev-moderate', low:'sev-low'};
+  return m[(s||'moderate').toLowerCase()] || 'sev-moderate';
+}
+function typeIcon(t) {
+  return t === 'FALL' ? '🤸' : '⚡';
+}
+
+function renderAlerts() {
+  const list = document.getElementById('alerts-list');
+  let items = _allAlerts;
+  if (_filter === 'unacked') items = items.filter(a => !a.acknowledged);
+  if (_filter === 'fall')    items = items.filter(a => (a.alert_category||'vision') === 'vision' && a.incident_type === 'FALL');
+  if (_filter === 'seizure') items = items.filter(a => (a.alert_category||'vision') === 'vision' && a.incident_type === 'SEIZURE');
+  if (_filter === 'audio')   items = items.filter(a => a.alert_category === 'audio');
+
+  document.getElementById('alert-badge').textContent = items.length + ' alert' + (items.length !== 1 ? 's' : '');
+
+  if (!items.length) {
+    list.innerHTML = `<div class="empty-state"><span class="empty-icon">🛡</span><div class="empty-title">${_filter === 'all' ? 'No alerts yet' : 'No alerts for this filter'}</div><div class="empty-sub">Confirmed AI incidents appear here in real-time.</div></div>`;
+    return;
+  }
+
+  list.innerHTML = items.map((a, idx) => {
+    const cat   = a.alert_category || 'vision';
+    const isAudio = cat === 'audio';
+    const type  = a.incident_type || (isAudio ? 'AUDIO — RESPIRATORY DISTRESS' : 'FALL');
+    // Card CSS class: audio / fall / seizure
+    const cardCls = isAudio ? 'audio' : (type.includes('FALL') ? 'fall' : 'seizure');
+    const sev   = (a.severity || 'moderate').toLowerCase();
+    const acts  = (a.actions || []).slice(0, 4);
+    const ackHtml = a.acknowledged
+      ? `<div class="ac-ack-note">✓ Acknowledged by ${a.ack_by || 'Nurse'} at ${a.ack_time || ''}</div>`
+      : '';
+
+    // For audio cards: parse the timeline out of incident_type if it contains '|'
+    let timelineHtml = '';
+    if (isAudio && a.narrative) {
+      // Extract timeline from headline if present (format: "⚡ ACCUMULATED ...TIMELINE: [...]") 
+      const tlMatch = (a.headline || '').match(/TIMELINE:\s*(.+)/i);
+      if (tlMatch) {
+        const events = tlMatch[1].split('|').map(s => s.trim()).filter(Boolean);
+        timelineHtml = `<div class="ac-timeline"><span class="ac-timeline-lbl">📊 Auditory Timeline</span>${events.map(e => '· ' + e).join('<br>')}</div>`;
+      }
+    }
+
+    const iconEl = isAudio ? '🎙' : typeIcon(type);
+    const typeLabel = isAudio ? '🎙 AUDIO DISTRESS CONFIRMED' : `⚠ ${type} CONFIRMED`;
+    const pillColor = isAudio ? 'pill-audio' : '';
+
+    return `
+    <div class="alert-card ${cardCls} ${a.acknowledged ? 'acknowledged' : ''}" id="acard-${a.id}" style="animation-delay:${idx * 0.06}s">
+      <div class="ac-top">
+        <div class="ac-left">
+          <div class="ac-icon ${cardCls}">${iconEl}</div>
+          <div class="ac-meta">
+            <div class="ac-type ${cardCls}">${typeLabel}</div>
+            <div class="ac-headline">${a.headline || type + ' Event Detected'}</div>
+            <div class="ac-pills">
+              <span class="ac-pill ${sevClass(sev)}">${sev.toUpperCase()}</span>
+              ${isAudio ? '<span class="ac-pill pill-audio">🎙 AUDIO</span>' : ''}
+              <span class="ac-pill pill-ward">Ward ${a.ward || 'ICU'}</span>
+              <span class="ac-pill pill-conf">Conf: ${a.confidence || 0}%</span>
+              ${a.acknowledged ? '<span class="ac-pill pill-ack">✓ ACKNOWLEDGED</span>' : ''}
+            </div>
+          </div>
+        </div>
+        <div class="ac-right">
+          <div class="ac-time">${a.time_str || ''}</div>
+          <div class="ac-ptid">${a.patient_id || 'PT-?????'}</div>
+          <button class="btn-ack" onclick="ackAlert(${a.id})" ${a.acknowledged ? 'disabled' : ''}>
+            ${a.acknowledged ? '✓ Done' : 'Acknowledge'}
+          </button>
+        </div>
+      </div>
+      ${timelineHtml}
+      ${a.narrative ? `<div class="ac-narrative">${a.narrative}</div>` : ''}
+      ${acts.length ? `<div class="ac-actions">${acts.map(x => `<div class="ac-action-item ${cardCls}">${x}</div>`).join('')}</div>` : ''}
+      ${ackHtml}
+    </div>`;
+  }).join('');
+}
+
+function updateStats() {
+  const total   = _allAlerts.length;
+  const unacked = _allAlerts.filter(a => !a.acknowledged).length;
+  const acked   = _allAlerts.filter(a => a.acknowledged).length;
+  const falls   = _allAlerts.filter(a => (a.alert_category||'vision')==='vision' && a.incident_type === 'FALL').length;
+  const seizures= _allAlerts.filter(a => (a.alert_category||'vision')==='vision' && a.incident_type === 'SEIZURE').length;
+  animNum('stat-total',   total);
+  animNum('stat-unacked', unacked);
+  animNum('stat-acked',   acked);
+  animNum('stat-falls',   falls);
+  animNum('stat-seizures',seizures);
+  document.title = unacked > 0 ? `(${unacked}) Alerts — Nurse Dashboard` : 'Nurse Dashboard';
+}
+
+function animNum(id, to) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const from = parseInt(el.textContent) || 0;
+  if (from === to) return;
+  const steps = Math.min(Math.abs(to - from), 12), diff = to - from;
+  let cur = from, c = 0;
+  if (el._t) clearInterval(el._t);
+  el._t = setInterval(() => {
+    c++; cur += diff / steps;
+    el.textContent = Math.round(cur);
+    if (c >= steps) { el.textContent = to; clearInterval(el._t); }
+  }, 20);
+}
+
+// Track last known state so we only touch the DOM when something actually changed
+let _lastAlertCount = -1;
+let _lastAlertTopId = -1;
+
+async function fetchAlerts() {
+  try {
+    const r = await fetch('/api/nurse/alerts');
+    const d = await r.json();
+    const incoming = d.alerts || [];
+    const newCount = incoming.length;
+    const newTopId = newCount > 0 ? incoming[0].id : -1;
+
+    // Only update DOM if something changed
+    const changed = newCount !== _lastAlertCount || newTopId !== _lastAlertTopId;
+    if (changed) {
+      const isNewAlert = newCount > _lastAlertCount && _lastAlertCount !== -1;
+      _allAlerts = incoming;
+      _lastAlertCount = newCount;
+      _lastAlertTopId = newTopId;
+      updateStats();
+      renderAlerts();
+      if (isNewAlert) {
+        const lbl = document.getElementById('last-refresh');
+        if (lbl) { lbl.textContent = '🚨 New alert · ' + new Date().toLocaleTimeString(); }
+        VG.toast('🚨 New alert received!', 'error');
+        playAlertChime();
+        // Fade the label back to empty after 8s
+        setTimeout(() => { const l = document.getElementById('last-refresh'); if(l) l.textContent = ''; }, 8000);
+      } else if (_lastAlertCount === -1 || newCount === 0) {
+        // Initial load
+        _allAlerts = incoming;
+        updateStats();
+        renderAlerts();
+      }
+    }
+  } catch(e) { /* silent fail — no visible flicker */ }
+}
+
+async function ackAlert(id) {
+  const a = _allAlerts.find(x => x.id === id);
+  if (!a) return;
+  try {
+    await fetch(`/api/nurse/alerts/${id}/acknowledge`, {
+      method: 'POST',
+      headers: { 'X-Nurse-Name': nurseName }
+    });
+    a.acknowledged = true;
+    a.ack_by  = nurseName;
+    a.ack_time = new Date().toLocaleTimeString();
+    updateStats();
+    renderAlerts();
+    VG.toast('✓ Alert acknowledged', 'success');
+  } catch(e) {
+    VG.toast('Failed to acknowledge', 'error');
+  }
+}
+
+async function clearAllAlerts() {
+  if (!confirm('Clear all session alerts? This cannot be undone.')) return;
+  try {
+    await fetch('/api/nurse/alerts', { method: 'DELETE' });
+    _allAlerts = [];
+    updateStats();
+    renderAlerts();
+    VG.toast('Session cleared', 'info');
+  } catch(e) {
+    VG.toast('Failed to clear', 'error');
+  }
+}
+
+function playAlertChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [[880, 0], [1046.5, 0.25], [880, 0.5]].forEach(([f, t]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = f; o.type = 'sine';
+      g.gain.setValueAtTime(0.2, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.3);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.35);
+    });
+  } catch(_) {}
+}
+
+// Initial load + polling
+fetchAlerts();
+setInterval(fetchAlerts, 5000);
+</script>
+</body>
+</html>
