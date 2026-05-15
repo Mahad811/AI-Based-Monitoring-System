@@ -4,9 +4,9 @@
 vision:
   # Shared person detector (used by both fall and seizure classifiers)
   person_detector:
-    model: yolo11n_openvino_model   # OpenVINO IR folder exported from yolo11n.pt
+    model: yolo11n.pt               # PyTorch model — native CUDA on RTX 4050 (Ubuntu)
     confidence: 0.10                # Lowered from 0.5 — catches partially visible patients
-    device: "intel:gpu"             # OpenVINO device: 'intel:gpu' (iGPU) or 'intel:cpu'
+    device: "0"                     # CUDA device 0 = RTX 4050 (bare-metal Ubuntu GPU)
   
   # Fall classifier V2 (temporal RGB triplets with ensemble support)
   # Model path can be:

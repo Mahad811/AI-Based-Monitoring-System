@@ -8,6 +8,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "1234"
       POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"      # expose to localhost for bare-metal Python runs
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +18,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Vital Guardian application ────────────────────────────────────────────────
+  # ── Vital Guardian application (GPU-enabled) ──────────────────────────────────
   app:
     build: .
     restart: unless-stopped
@@ -34,20 +36,62 @@ services:
     environment:
       # Point the app at the db service (overrides any localhost URL in .env)
       DATABASE_URL: postgresql://postgres:1234@db:5432/postgres
-      # Force OpenVINO onto CPU — Intel iGPU passthrough is not available
-      # in WSL2/Docker on Windows.
-      OPENVINO_DEVICE: intel:cpu
-      # Silence Ultralytics config-dir warning (no /root/.config writable in container)
+
+      # GPU mode: OPENVINO_DEVICE is intentionally NOT set here.
+      # This lets config.yaml's person_detector.device="0" take effect,
+      # routing YOLO to CUDA GPU 0 (RTX 4050) via PyTorch.
+      # (The old intel:cpu override has been removed.)
+
+      # Silence Ultralytics config-dir warning
       YOLO_CONFIG_DIR: /tmp/.ultralytics
+
       # YOLO person detector: run inference every N frames.
-      # bare-metal iGPU handles every-frame (1) fine; CPU-only Docker needs higher
-      # value to keep FPS stable. 4 = ~7.5 YOLO calls/sec at 30fps target.
-      PERSON_DETECTOR_PROCESS_EVERY: "4"
+      # 3 = match bare-metal default (original working value).
+      PERSON_DETECTOR_PROCESS_EVERY: "3"
+
+      # ── Force CPU inference for GPU-sensitive models in Docker ────────────────
+      # In Docker, TF's GPU init fails (cuDNN CUDNN_STATUS_NOT_INITIALIZED).
+      # After this failure, PyTorch CUDA context is also corrupted — calling
+      # YOLO without explicit device='cpu' causes Ultralytics to auto-select
+      # GPU again and hang on the broken cuDNN context (blank video screen).
+      # Setting YOLO_FORCE_CPU=true makes person_detector.py always pass
+      # device='cpu' explicitly so YOLO never touches the broken CUDA state.
+      YOLO_FORCE_CPU: "true"
+      MOVINET_FORCE_CPU: "true"
+
       # No real microphone device inside the container.
       MIC_ENABLED: "false"
+
       # Audio analytics (YAMNet/Whisper) still run: pre-recorded clip audio is
       # injected into the queue stub, so distress detection works on video clips.
       AUDIO_ANALYTICS_ENABLED: "true"
+
+      # Prevent TF from pre-allocating all VRAM (same as bare-metal run_server.sh)
+      TF_FORCE_GPU_ALLOW_GROWTH: "true"
+
+      # ── CUDA library path (critical for MoViNet / TF GPU inference) ───────────
+      # Prioritises pip-bundled cuDNN 9 over the system cuDNN 8 in the base image.
+      LD_LIBRARY_PATH: /usr/local/lib/python3.11/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cufft/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cusolver/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cusparse/lib:/usr/local/lib/python3.11/dist-packages/nvidia/curand/lib:/usr/local/lib/python3.11/dist-packages/nvidia/cuda_cupti/lib:/usr/local/lib/python3.11/dist-packages/nvidia/nvjitlink/lib
+
+      # ── XLA / libdevice fix (critical for MoViNet GPU kernel compilation) ─────
+      # TF's XLA JIT compiler needs libdevice.10.bc to compile GPU kernels
+      # (Rsqrt, Conv3D, BatchNorm etc.). In Docker it's not in the default path
+      # so XLA falls back to PTX JIT which errors with "libdevice not found".
+      # The file ships with the triton pip package at this location:
+      XLA_FLAGS: "--xla_gpu_cuda_data_dir=/usr/local/lib/python3.11/dist-packages/triton/backends/nvidia/lib"
+
+    # ── NVIDIA GPU device reservation ─────────────────────────────────────────
+    # Requires nvidia-container-toolkit on the host:
+    #   sudo apt-get install -y nvidia-container-toolkit
+    #   sudo nvidia-ctk runtime configure --runtime=docker
+    #   sudo systemctl restart docker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
     volumes:
       # ── Model files (read-only) ──────────────────────────────────────────────

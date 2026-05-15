@@ -1,0 +1,25 @@
+# Patch build: layers changes on top of the existing local app image.
+# No Docker Hub connection needed — uses already-built local image as base.
+# Run: docker build -f Dockerfile.patch -t ai-based-monitoring-system-app:latest .
+FROM ai-based-monitoring-system-app:latest
+
+WORKDIR /app
+
+# ── Install the missing MoViNet backbone package ───────────────────────────────
+# tf-models-official provides 'official.projects.movinet' used by movinet_loader.py.
+# It was installed in the bare-metal venv but was absent from requirements.txt.
+RUN pip install --no-cache-dir tf-models-official==2.20.0
+
+# ── Fix TF XLA libdevice (critical for GPU batch norm / Conv3D JIT) ───────────
+# TF's XLA JIT compiler looks for libdevice.10.bc at ./libdevice.10.bc relative
+# to the process CWD (/app). The nvidia/cuda RUNTIME base image does NOT include
+# this file (it's in the DEVEL image). However, the triton pip package ships it.
+# Copying to /app ensures TF finds it without any XLA_FLAGS env var needed.
+RUN cp /usr/local/lib/python3.11/dist-packages/triton/backends/nvidia/lib/libdevice.10.bc \
+       /app/libdevice.10.bc
+
+# ── Copy updated source files ──────────────────────────────────────────────────
+COPY visual_guardian/ /app/visual_guardian/
+COPY scripts/demo/demo_server.py /app/scripts/demo/demo_server.py
+COPY config/ /app/config/
+COPY requirements.txt /app/requirements.txt
